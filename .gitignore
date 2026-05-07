@@ -1,0 +1,7 @@
+.next/
+node_modules/
+out/
+.env*.local
+vercel.json.local
+*.log
+__pycache__/
