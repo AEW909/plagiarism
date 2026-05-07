@@ -199,7 +199,7 @@ function analyseMetadata(doc: ExtractedDocx): Finding[] {
   }
 
   if (Number.isFinite(revisions) && Number.isFinite(pages) && pages <= 20 && revisions > 200) {
-    findings.push(makeFinding("metadata-revisions", "Document Metadata", "notable", "High revision count", `The document reports ${revisions} revisions across ${pages} pages.`, "Document properties", "A very high revision count can be consistent with repeated automated saves or extensive copy/edit cycles.", "Cloud editors and autosave behaviour can inflate revision counts without indicating misconduct.", "Ask the candidate to talk through their drafting process and available version history."));
+    findings.push(makeFinding("metadata-revisions", "Document Metadata", "notable", "High revision count", `The document reports ${revisions} revisions across ${pages} pages.`, "Expected: revision counts vary widely, but this check flags >200 revisions for documents of 20 pages or fewer.", "Document properties", "A very high revision count can be consistent with repeated automated saves or extensive copy/edit cycles.", "Cloud editors and autosave behaviour can inflate revision counts without indicating misconduct.", "Ask the candidate to talk through their drafting process and available version history."));
   }
 
   return findings;
@@ -213,7 +213,7 @@ function analyseXml(doc: ExtractedDocx): Finding[] {
   const wordCount = tokenize(doc.text).length;
 
   if ((wordCount < 8000 && uniqueRsids.size > 80) || uniqueRsids.size > 150) {
-    findings.push(makeFinding("xml-rsid", "XML Forensics", "notable", "Unusually varied edit-session identifiers", `The DOCX XML contains ${uniqueRsids.size} unique rsidR values across ${paragraphs.length || 1} paragraphs.`, "word/document.xml", "High RSID variety can be consistent with content assembled across multiple edit sessions or sources.", "Normal Word autosave, collaborative editing, and long editing histories can also increase RSID variety.", "Ask the candidate to explain how the document evolved and whether they can show drafts or version history."));
+    findings.push(makeFinding("xml-rsid", "XML Forensics", "notable", "Unusually varied edit-session identifiers", `The DOCX XML contains ${uniqueRsids.size} unique rsidR values across ${paragraphs.length || 1} paragraphs.`, "Expected: no fixed universal norm; this check flags >80 unique RSIDs under 8,000 words, and >150 unique RSIDs unconditionally.", "word/document.xml", "High RSID variety can be consistent with content assembled across multiple edit sessions or sources.", "Normal Word autosave, collaborative editing, and long editing histories can also increase RSID variety.", "Ask the candidate to explain how the document evolved and whether they can show drafts or version history."));
   }
 
   paragraphs.forEach((paragraphXml, paragraphIndex) => {
@@ -227,14 +227,14 @@ function analyseXml(doc: ExtractedDocx): Finding[] {
       }
 
       if (/w:val="(?:FFFFFF|ffffff)"/.test(run) || /<w:vanish\b/.test(run)) {
-        findings.push(makeFinding(`xml-hidden-${paragraphIndex}`, "XML Forensics", "critical", "Hidden or white text detected", `Hidden or white-coloured text appears in paragraph ${paragraphIndex + 1}: "${clip(runText, 120)}".`, `Paragraph ${paragraphIndex + 1}`, "Hidden text can indicate concealed content or pasted material not intended to be visible to the examiner.", "Some accessibility tools, templates, or accidental formatting changes can create hidden runs.", "Ask the candidate to explain this paragraph and how the hidden text entered the document."));
+        findings.push(makeFinding(`xml-hidden-${paragraphIndex}`, "XML Forensics", "critical", "Hidden or white text detected", `Hidden or white-coloured text appears in paragraph ${paragraphIndex + 1}: "${clip(runText, 120)}".`, "Expected: visible assessment text should not normally include hidden runs or white-on-white content.", `Paragraph ${paragraphIndex + 1}`, "Hidden text can indicate concealed content or pasted material not intended to be visible to the examiner.", "Some accessibility tools, templates, or accidental formatting changes can create hidden runs.", "Ask the candidate to explain this paragraph and how the hidden text entered the document."));
       }
 
       const fontMatches = [...run.matchAll(/w:(?:ascii|hAnsi|cs|eastAsia)="([^"]+)"/g)];
       for (const fontMatch of fontMatches) {
         const font = fontMatch[1];
         if (/webkit|apple|-apple-system|BlinkMacSystemFont/i.test(font)) {
-          findings.push(makeFinding(`xml-browser-font-${paragraphIndex}-${font}`, "XML Forensics", "critical", "Browser-origin font marker detected", `The font marker "${font}" appears near: "${clip(visibleText, 140)}".`, `Paragraph ${paragraphIndex + 1}`, "Browser-origin font markers may indicate pasted content from a web page, browser editor, or generated HTML source.", "Google Docs, Word Online, learning platforms, or copied legitimate notes can leave browser-origin formatting.", "Ask the candidate to explain the claim in this paragraph and whether any web editor or pasted notes were used."));
+          findings.push(makeFinding(`xml-browser-font-${paragraphIndex}-${font}`, "XML Forensics", "critical", "Browser-origin font marker detected", `The font marker "${font}" appears near: "${clip(visibleText, 140)}".`, "Expected: Word-authored text normally uses document fonts such as Aptos, Calibri, Times New Roman, Arial, or theme fonts rather than CSS/browser font markers.", `Paragraph ${paragraphIndex + 1}`, "Browser-origin font markers may indicate pasted content from a web page, browser editor, or generated HTML source.", "Google Docs, Word Online, learning platforms, or copied legitimate notes can leave browser-origin formatting.", "Ask the candidate to explain the claim in this paragraph and whether any web editor or pasted notes were used."));
         }
       }
     }
@@ -242,7 +242,7 @@ function analyseXml(doc: ExtractedDocx): Finding[] {
 
   const fontNames = new Set([...doc.documentXml.matchAll(/w:ascii="([^"]+)"/g)].map((match) => match[1]).filter((font) => !/minor|major|theme/i.test(font)));
   if (fontNames.size > 4) {
-    findings.push(makeFinding("xml-font-diversity", "XML Forensics", "notable", "High font diversity", `The document uses ${fontNames.size} named fonts: ${Array.from(fontNames).slice(0, 8).join(", ")}.`, "word/document.xml", "Multiple fonts can be consistent with content pasted from several sources.", "Templates, headings, bibliographies, and normal formatting changes can legitimately use several fonts.", "Ask the candidate to describe their drafting and formatting process."));
+    findings.push(makeFinding("xml-font-diversity", "XML Forensics", "notable", "High font diversity", `The document uses ${fontNames.size} named fonts: ${Array.from(fontNames).slice(0, 8).join(", ")}.`, "Expected: many essays use 1-3 named fonts; this check flags more than 4 distinct named fonts after excluding theme defaults.", "word/document.xml", "Multiple fonts can be consistent with content pasted from several sources.", "Templates, headings, bibliographies, and normal formatting changes can legitimately use several fonts.", "Ask the candidate to describe their drafting and formatting process."));
   }
 
   return findings;
@@ -291,7 +291,7 @@ function analyseStylometric(doc: ExtractedDocx): Finding[] {
   const transitionDensity = (transitionCount / wordCount) * 1000;
 
   if (transitionDensity > 10) {
-    findings.push(makeFinding("style-transitions", "Stylometric Indicators", "notable", "High formal transition density", `The text uses ${transitionCount} formal transition phrases, around ${transitionDensity.toFixed(1)} per 1,000 words.`, "Whole document", "Dense formal transitions can be consistent with AI-assisted academic prose or heavy paraphrasing.", "Some topics and strong academic writing styles naturally use frequent transitions.", "Ask the candidate to explain how they structured the argument and why these transitions were chosen."));
+    findings.push(makeFinding("style-transitions", "Stylometric Indicators", "notable", "High formal transition density", `The text uses ${transitionCount} formal transition phrases, around ${transitionDensity.toFixed(1)} per 1,000 words.`, "Expected: varies by essay type; this check flags >10 formal transition phrases per 1,000 words.", "Whole document", "Dense formal transitions can be consistent with AI-assisted academic prose or heavy paraphrasing.", "Some topics and strong academic writing styles naturally use frequent transitions.", "Ask the candidate to explain how they structured the argument and why these transitions were chosen."));
   }
 
   const paragraphs = doc.paragraphs.filter((paragraph) => tokenize(paragraph).length >= 60);
@@ -299,7 +299,7 @@ function analyseStylometric(doc: ExtractedDocx): Finding[] {
     for (let right = left + 1; right < paragraphs.length; right += 1) {
       const score = ngramJaccard(paragraphs[left], paragraphs[right], 5);
       if (score > 0.25) {
-        findings.push(makeFinding(`style-near-dup-${left}-${right}`, "Stylometric Indicators", score > 0.45 ? "critical" : "notable", "Near-duplicate paragraph pair", `Paragraphs ${left + 1} and ${right + 1} share a five-gram similarity score of ${score.toFixed(2)}.`, `Paragraphs ${left + 1} and ${right + 1}`, "Near-duplicate paragraphs can indicate circular restatement, patchwriting, or generated filler.", "A literature review may legitimately revisit similar concepts in different sections.", "Ask the candidate to explain the difference between the two paragraphs and why both are needed."));
+        findings.push(makeFinding(`style-near-dup-${left}-${right}`, "Stylometric Indicators", score > 0.45 ? "critical" : "notable", "Near-duplicate paragraph pair", `Paragraphs ${left + 1} and ${right + 1} share a five-gram similarity score of ${score.toFixed(2)}.`, "Expected: unrelated paragraphs are usually close to 0.00; this check flags >0.25 as notable and >0.45 as critical.", `Paragraphs ${left + 1} and ${right + 1}`, "Near-duplicate paragraphs can indicate circular restatement, patchwriting, or generated filler.", "A literature review may legitimately revisit similar concepts in different sections.", "Ask the candidate to explain the difference between the two paragraphs and why both are needed."));
       }
     }
   }
@@ -307,7 +307,7 @@ function analyseStylometric(doc: ExtractedDocx): Finding[] {
   const sentences = splitSentences(doc.text);
   const patternedOpeners = sentences.filter((sentence) => /^(this|these)\s+\w+|^such\s+\w+|^it is\s+\w+|^there (is|are)\b/i.test(sentence)).length;
   if (sentences.length && patternedOpeners / sentences.length > 0.18) {
-    findings.push(makeFinding("style-openers", "Stylometric Indicators", "notable", "Repeated sentence-opening pattern", `${patternedOpeners} of ${sentences.length} sentences begin with a small set of formal opener patterns.`, "Whole document", "Repetitive sentence openings can be consistent with templated or AI-assisted prose.", "A student may also have a repetitive but genuine writing style.", "Ask the candidate to explain how they revised sentence variety."));
+    findings.push(makeFinding("style-openers", "Stylometric Indicators", "notable", "Repeated sentence-opening pattern", `${patternedOpeners} of ${sentences.length} sentences begin with a small set of formal opener patterns.`, "Expected: varied prose usually keeps these opener patterns below 18% of sentences; this check flags >18%.", "Whole document", "Repetitive sentence openings can be consistent with templated or AI-assisted prose.", "A student may also have a repetitive but genuine writing style.", "Ask the candidate to explain how they revised sentence variety."));
   }
 
   return findings.slice(0, 18);
@@ -329,19 +329,44 @@ function analyseLinguistic(doc: ExtractedDocx): Finding[] {
   metrics.forEach((metric, index) => {
     if (sdGrade > 0 && Math.abs(metric.fk - meanGrade) > sdGrade * 1.8) {
       const direction = metric.fk > meanGrade ? "more complex" : "simpler";
-      findings.push(makeFinding(`ling-grade-${index}`, "Linguistic Consistency", "notable", `Complexity shift in segment ${index + 1}`, `Segment ${index + 1} is ${direction} than the document average. Estimated grade: ${metric.fk.toFixed(1)}; document mean: ${meanGrade.toFixed(1)}. Opening: "${clip(metric.text, 180)}".`, `Segment ${index + 1}`, "A sharp complexity shift can suggest a different drafting source or a pasted section.", "Students often vary in complexity between introduction, evidence review, and conclusion sections.", "Ask the candidate to explain the argument in this segment and how it was drafted."));
+      findings.push(makeFinding(`ling-grade-${index}`, "Linguistic Consistency", "notable", `Complexity shift in segment ${index + 1}`, `Segment ${index + 1} is ${direction} than the document average. Estimated grade: ${metric.fk.toFixed(1)}; document mean: ${meanGrade.toFixed(1)}. Opening: "${clip(metric.text, 180)}".`, "Expected: segment complexity should normally sit within about 1.8 standard deviations of the document mean; this check flags larger deviations.", `Segment ${index + 1}`, "A sharp complexity shift can suggest a different drafting source or a pasted section.", "Students often vary in complexity between introduction, evidence review, and conclusion sections.", "Ask the candidate to explain the argument in this segment and how it was drafted."));
     }
 
     if (sdFormal > 0 && metric.formalDensity > meanFormal + sdFormal * 2) {
-      findings.push(makeFinding(`ling-register-${index}`, "Linguistic Consistency", "notable", `Formal register spike in segment ${index + 1}`, `Segment ${index + 1} has a formal academic vocabulary density of ${metric.formalDensity.toFixed(1)} per 100 words. Opening: "${clip(metric.text, 180)}".`, `Segment ${index + 1}`, "A local register spike can indicate inserted or heavily AI-assisted academic prose.", "A source-heavy section or a carefully revised paragraph may legitimately become more formal.", "Ask the candidate to explain the technical terms and how the paragraph was developed."));
+      findings.push(makeFinding(`ling-register-${index}`, "Linguistic Consistency", "notable", `Formal register spike in segment ${index + 1}`, `Segment ${index + 1} has a formal academic vocabulary density of ${metric.formalDensity.toFixed(1)} per 100 words. Opening: "${clip(metric.text, 180)}".`, "Expected: formal vocabulary density should usually track the document's own baseline; this check flags segments more than 2 standard deviations above the document mean.", `Segment ${index + 1}`, "A local register spike can indicate inserted or heavily AI-assisted academic prose.", "A source-heavy section or a carefully revised paragraph may legitimately become more formal.", "Ask the candidate to explain the technical terms and how the paragraph was developed."));
     }
   });
 
   return findings.slice(0, 12);
 }
 
-function makeFinding(id: string, category: string, severity: Finding["severity"], title: string, evidence: string, location: string, interpretation: string, counterArgument: string, vivaAngle: string): Finding {
-  return { id, category, severity, title, evidence, location, interpretation, counterArgument, vivaAngle };
+function makeFinding(id: string, category: string, severity: Finding["severity"], title: string, evidence: string, normalRangeOrLocation: string, locationOrInterpretation: string, interpretationOrCounterArgument: string, counterArgumentOrVivaAngle: string, vivaAngle?: string): Finding {
+  if (vivaAngle === undefined) {
+    return {
+      id,
+      category,
+      severity,
+      title,
+      evidence,
+      location: normalRangeOrLocation,
+      interpretation: locationOrInterpretation,
+      counterArgument: interpretationOrCounterArgument,
+      vivaAngle: counterArgumentOrVivaAngle
+    };
+  }
+
+  return {
+    id,
+    category,
+    severity,
+    title,
+    evidence,
+    normalRange: normalRangeOrLocation,
+    location: locationOrInterpretation,
+    interpretation: interpretationOrCounterArgument,
+    counterArgument: counterArgumentOrVivaAngle,
+    vivaAngle
+  };
 }
 
 function buildInterpretation(findings: Finding[]) {

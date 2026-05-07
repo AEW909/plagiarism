@@ -6,6 +6,7 @@ export type Finding = {
   severity: Severity;
   title: string;
   evidence: string;
+  normalRange?: string;
   location?: string;
   interpretation: string;
   counterArgument: string;

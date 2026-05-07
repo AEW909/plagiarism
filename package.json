@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@react-pdf/renderer": "^4.5.1",
     "fast-xml-parser": "^5.7.3",
     "jszip": "^3.10.1",
     "lucide-react": "^0.468.0",

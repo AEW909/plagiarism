@@ -22,18 +22,20 @@ export async function runAiReview(doc: ExtractedDocx, findings: Finding[]): Prom
         {
           role: "developer",
           content:
-            "You are an academic integrity review assistant. Do not accuse a student of misconduct. Give cautious interpretive evidence, plausible counter-arguments, and viva questions that let a candidate demonstrate authorship."
+            "You are an academic integrity review assistant for LAISR. Do not accuse a student of misconduct. Treat AI analysis as one interpretive evidence stream alongside metadata, XML, textual, stylometric, linguistic, and authenticated-work evidence. Use cautious language. Your task is to help an examiner decide whether further review or viva discussion is warranted, and to generate fair questions that let a candidate demonstrate authorship."
         },
         {
           role: "user",
           content: JSON.stringify({
-            task: "Review this document text alongside algorithmic findings. Return JSON only with keys opinion, counterArgument, assessment, vivaQuestions. vivaQuestions must be an array of objects with question and rationale.",
+            task:
+              "Review this document text alongside algorithmic findings. Return JSON only with keys opinion, counterArgument, assessment, vivaQuestions. The opinion should interpret evidence for and against further investigation. The counterArgument should present plausible innocent explanations. The assessment should say which argument currently holds most weight and whether viva discussion would be proportionate. Do not use percentage-likelihood claims. vivaQuestions must be an array of objects with question and rationale, linked to the text or findings where possible.",
             textPreview: doc.text.slice(0, 9000),
             findings: findings.map((finding) => ({
               category: finding.category,
               severity: finding.severity,
               title: finding.title,
               evidence: finding.evidence,
+              normalRange: finding.normalRange,
               location: finding.location
             }))
           })

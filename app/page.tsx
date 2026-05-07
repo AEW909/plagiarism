@@ -5,6 +5,7 @@ import {
   Brain,
   CheckCircle2,
   Download,
+  FileQuestion,
   FileSearch,
   FileText,
   Loader2,
@@ -12,8 +13,10 @@ import {
   Upload,
   Users
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { LaisrReport, Severity } from "@/lib/laisr/types";
+
+type ReportTab = "evidence" | "interpretation" | "counter" | "judgement";
 
 export default function Home() {
   const [file, setFile] = useState<File | null>(null);
@@ -22,6 +25,13 @@ export default function Home() {
   const [report, setReport] = useState<LaisrReport | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState<ReportTab>("evidence");
+  const [includeVivaInPdf, setIncludeVivaInPdf] = useState(true);
+  const [aiConfig, setAiConfig] = useState<{
+    aiConfigured: boolean;
+    model: string;
+  } | null>(null);
 
   const groupedFindings = useMemo(() => {
     return (report?.findings ?? []).reduce<Record<string, LaisrReport["findings"]>>(
@@ -33,6 +43,27 @@ export default function Home() {
       {}
     );
   }, [report]);
+
+  useEffect(() => {
+    let active = true;
+
+    fetch("/api/config")
+      .then((response) => response.json())
+      .then((payload) => {
+        if (active) {
+          setAiConfig(payload);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setAiConfig({ aiConfigured: false, model: "unknown" });
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   async function analyseDocument() {
     if (!file) {
@@ -61,10 +92,50 @@ export default function Home() {
       }
 
       setReport(payload);
+      setActiveTab("evidence");
     } catch (analysisError) {
       setError(analysisError instanceof Error ? analysisError.message : "Analysis failed.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function downloadPdf() {
+    if (!report) {
+      return;
+    }
+
+    setPdfLoading(true);
+    setError("");
+
+    try {
+      const response = await fetch("/api/report/pdf", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          report,
+          includeVivaQuestions: includeVivaInPdf
+        })
+      });
+
+      if (!response.ok) {
+        const payload = await response.json();
+        throw new Error(payload.error || "PDF generation failed.");
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${report.summary.fileName.replace(/\.docx$/i, "")}_laisr_report.pdf`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (pdfError) {
+      setError(pdfError instanceof Error ? pdfError.message : "PDF generation failed.");
+    } finally {
+      setPdfLoading(false);
     }
   }
 
@@ -133,6 +204,14 @@ export default function Home() {
             {loading ? <Loader2 className="spin" size={18} /> : <FileSearch size={18} />}
             Analyse document
           </button>
+          <div className={aiConfig?.aiConfigured ? "config-pill ready" : "config-pill"}>
+            <Brain size={15} />
+            {aiConfig
+              ? aiConfig.aiConfigured
+                ? `AI review enabled (${aiConfig.model})`
+                : "AI review not configured"
+              : "Checking AI configuration..."}
+          </div>
           {error ? <p className="error-text">{error}</p> : null}
         </div>
       </section>
@@ -147,14 +226,10 @@ export default function Home() {
               </p>
               <strong>{report.summary.recommendation}</strong>
               <span>
-                {report.summary.seriousCount} serious/critical indicators ·{" "}
+                {report.summary.seriousCount} serious/critical indicators{" · "}
                 {report.summary.notableCount} notable indicators
               </span>
             </div>
-            <button className="secondary-button" type="button" onClick={downloadJson}>
-              <Download size={18} />
-              JSON
-            </button>
           </div>
 
           <div className="summary-grid">
@@ -164,58 +239,50 @@ export default function Home() {
             <SummaryItem label="Paragraphs" value={String(report.summary.paragraphCount)} />
           </div>
 
-          <section className="reasoning-grid">
-            <ReasoningPanel icon={<FileText size={18} />} title="Interpretation" body={report.interpretation} />
-            <ReasoningPanel icon={<Users size={18} />} title="Counter-argument" body={report.counterArgument} />
-            <ReasoningPanel icon={<CheckCircle2 size={18} />} title="Which argument holds most water" body={report.assessment} />
-          </section>
-
-          <section className="panel ai-panel">
-            <h2>
-              <Brain size={18} />
-              AI Textual Review
-            </h2>
-            <p className="status-pill">{aiStatus(report.aiReview.status)}</p>
-            <div className="ai-copy">
-              <p>{report.aiReview.opinion}</p>
-              <p>{report.aiReview.counterArgument}</p>
-              <p>{report.aiReview.assessment}</p>
+          <section className="tab-shell">
+            <div className="tabs" role="tablist" aria-label="LAISR report sections">
+              <TabButton
+                active={activeTab === "evidence"}
+                icon={<FileSearch size={17} />}
+                label="Evidence"
+                onClick={() => setActiveTab("evidence")}
+              />
+              <TabButton
+                active={activeTab === "interpretation"}
+                icon={<Brain size={17} />}
+                label="Interpretation"
+                onClick={() => setActiveTab("interpretation")}
+              />
+              <TabButton
+                active={activeTab === "counter"}
+                icon={<Users size={17} />}
+                label="Counter-Argument"
+                onClick={() => setActiveTab("counter")}
+              />
+              <TabButton
+                active={activeTab === "judgement"}
+                icon={<CheckCircle2 size={17} />}
+                label="Final Judgement"
+                onClick={() => setActiveTab("judgement")}
+              />
             </div>
-          </section>
 
-          <section className="findings-stack">
-            {Object.entries(groupedFindings).length > 0 ? (
-              Object.entries(groupedFindings).map(([category, findings]) => (
-                <article className="panel" key={category}>
-                  <h2>{category}</h2>
-                  <div className="finding-list">
-                    {findings.map((finding) => (
-                      <FindingCard key={finding.id} finding={finding} />
-                    ))}
-                  </div>
-                </article>
-              ))
-            ) : (
-              <article className="panel">
-                <h2>No indicators detected</h2>
-                <p className="muted">
-                  The current checks did not surface notable indicators in this document.
-                  This does not prove authorship; it simply means these review signals did
-                  not trigger.
-                </p>
-              </article>
-            )}
-          </section>
-
-          <section className="panel">
-            <h2>Suggested viva questions</h2>
-            <div className="question-list">
-              {report.vivaQuestions.map((question, index) => (
-                <div className="question" key={`${question.question}-${index}`}>
-                  <strong>{index + 1}. {question.question}</strong>
-                  <p>{question.rationale}</p>
-                </div>
-              ))}
+            <div className="tab-panel">
+              {activeTab === "evidence" ? (
+                <EvidenceTab groupedFindings={groupedFindings} report={report} />
+              ) : null}
+              {activeTab === "interpretation" ? <InterpretationTab report={report} /> : null}
+              {activeTab === "counter" ? <CounterArgumentTab report={report} /> : null}
+              {activeTab === "judgement" ? (
+                <JudgementTab
+                  includeVivaInPdf={includeVivaInPdf}
+                  onDownloadJson={downloadJson}
+                  onDownloadPdf={downloadPdf}
+                  onToggleViva={setIncludeVivaInPdf}
+                  pdfLoading={pdfLoading}
+                  report={report}
+                />
+              ) : null}
             </div>
           </section>
         </section>
@@ -229,6 +296,31 @@ export default function Home() {
   );
 }
 
+function TabButton({
+  active,
+  icon,
+  label,
+  onClick
+}: {
+  active: boolean;
+  icon: React.ReactNode;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      aria-selected={active}
+      className={active ? "tab-button active" : "tab-button"}
+      role="tab"
+      type="button"
+      onClick={onClick}
+    >
+      {icon}
+      {label}
+    </button>
+  );
+}
+
 function SummaryItem({ label, value }: { label: string; value: string }) {
   return (
     <div className="summary-item">
@@ -238,23 +330,175 @@ function SummaryItem({ label, value }: { label: string; value: string }) {
   );
 }
 
-function ReasoningPanel({
-  icon,
-  title,
-  body
+function EvidenceTab({
+  groupedFindings,
+  report
 }: {
-  icon: React.ReactNode;
-  title: string;
-  body: string;
+  groupedFindings: Record<string, LaisrReport["findings"]>;
+  report: LaisrReport;
 }) {
   return (
-    <article className="panel reasoning-panel">
+    <div className="findings-stack">
+      <article className="panel">
+        <h2>
+          <FileText size={18} />
+          Document metadata
+        </h2>
+        <div className="metadata-grid">
+          <SummaryItem label="Creator" value={report.metadata.creator} />
+          <SummaryItem label="Last editor" value={report.metadata.lastModifiedBy} />
+          <SummaryItem label="Revision" value={report.metadata.revision} />
+          <SummaryItem label="Application" value={report.metadata.application} />
+        </div>
+      </article>
+
+      {Object.entries(groupedFindings).length > 0 ? (
+        Object.entries(groupedFindings).map(([category, findings]) => (
+          <article className="panel" key={category}>
+            <h2>{category}</h2>
+            <div className="finding-list">
+              {findings.map((finding) => (
+                <FindingCard key={finding.id} finding={finding} />
+              ))}
+            </div>
+          </article>
+        ))
+      ) : (
+        <article className="panel">
+          <h2>No indicators detected</h2>
+          <p className="muted">
+            The current checks did not surface notable indicators in this document.
+            This does not prove authorship; it simply means these review signals did
+            not trigger.
+          </p>
+        </article>
+      )}
+    </div>
+  );
+}
+
+function InterpretationTab({ report }: { report: LaisrReport }) {
+  return (
+    <div className="reasoning-stack">
+      <ReasoningBlock
+        body={report.interpretation}
+        icon={<FileText size={18} />}
+        title="Interpretation of the evidence"
+      />
+      <section className="panel ai-panel">
+        <h2>
+          <Brain size={18} />
+          AI Textual Review
+        </h2>
+        <p className="status-pill">{aiStatus(report.aiReview.status)}</p>
+        <div className="ai-copy">
+          <p>{report.aiReview.opinion}</p>
+          <p>{report.aiReview.assessment}</p>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function CounterArgumentTab({ report }: { report: LaisrReport }) {
+  return (
+    <div className="reasoning-stack">
+      <ReasoningBlock
+        body={report.counterArgument}
+        icon={<Users size={18} />}
+        title="Plausible innocent explanations"
+      />
+      <ReasoningBlock
+        body={report.aiReview.counterArgument}
+        icon={<Brain size={18} />}
+        title="AI-generated counter-position"
+      />
+    </div>
+  );
+}
+
+function JudgementTab({
+  includeVivaInPdf,
+  onDownloadJson,
+  onDownloadPdf,
+  onToggleViva,
+  pdfLoading,
+  report
+}: {
+  includeVivaInPdf: boolean;
+  onDownloadJson: () => void;
+  onDownloadPdf: () => void;
+  onToggleViva: (value: boolean) => void;
+  pdfLoading: boolean;
+  report: LaisrReport;
+}) {
+  return (
+    <div className="reasoning-stack">
+      <ReasoningBlock
+        body={report.assessment}
+        icon={<CheckCircle2 size={18} />}
+        title="Final judgement"
+      />
+
+      <section className="panel">
+        <div className="judgement-header">
+          <h2>
+            <FileQuestion size={18} />
+            Viva options
+          </h2>
+          <label className="toggle-row">
+            <input
+              checked={includeVivaInPdf}
+              type="checkbox"
+              onChange={(event) => onToggleViva(event.target.checked)}
+            />
+            Include viva questions in PDF
+          </label>
+        </div>
+
+        <div className="report-actions solid">
+          <button className="primary-button" type="button" disabled={pdfLoading} onClick={onDownloadPdf}>
+            {pdfLoading ? <Loader2 className="spin" size={18} /> : <Download size={18} />}
+            Download PDF
+          </button>
+          <button className="outline-button" type="button" onClick={onDownloadJson}>
+            JSON
+          </button>
+        </div>
+      </section>
+
+      <section className="panel">
+        <h2>Suggested viva questions</h2>
+        <div className="question-list">
+          {report.vivaQuestions.map((question, index) => (
+            <div className="question" key={`${question.question}-${index}`}>
+              <strong>{index + 1}. {question.question}</strong>
+              <p>{question.rationale}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function ReasoningBlock({
+  body,
+  icon,
+  title
+}: {
+  body: string;
+  icon: React.ReactNode;
+  title: string;
+}) {
+  return (
+    <section className="panel reasoning-panel">
       <h2>
         {icon}
         {title}
       </h2>
       <p>{body}</p>
-    </article>
+    </section>
   );
 }
 
@@ -267,6 +511,12 @@ function FindingCard({ finding }: { finding: LaisrReport["findings"][number] }) 
       </div>
       <p>{finding.evidence}</p>
       <dl>
+        {finding.normalRange ? (
+          <div>
+            <dt>Normal range / benchmark</dt>
+            <dd>{finding.normalRange}</dd>
+          </div>
+        ) : null}
         <div>
           <dt>Interpretation</dt>
           <dd>{finding.interpretation}</dd>

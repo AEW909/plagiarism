@@ -2,8 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Plagiarism Signal Checker",
-  description: "A Vercel-ready tool for comparing documents and surfacing plagiarism signals."
+  title: "LAISR",
+  description:
+    "Learning Authorship Integrity Signal Review for DOCX forensic signals and viva preparation."
 };
 
 export default function RootLayout({
