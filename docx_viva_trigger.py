@@ -21,6 +21,9 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
 import xml.etree.ElementTree as ET
 
+import tkinter as tk
+from tkinter import filedialog, messagebox
+
 NS = {
     "w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
     "dc": "http://purl.org/dc/elements/1.1/",
@@ -263,12 +266,7 @@ def compare_to_baseline(submitted: List[ParagraphMetrics], baseline: List[Paragr
     return findings
 
 
-def render_report(
-    submitted_path: Path,
-    metadata: Dict[str, str],
-    findings: List[Finding],
-    paragraph_count: int,
-) -> str:
+def render_report(submitted_path: Path, metadata: Dict[str, str], findings: List[Finding], paragraph_count: int) -> str:
     now = dt.datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
 
     high_weight = sum(1 for f in findings if "CODE-VERIFIED" in f.tags)
@@ -340,20 +338,8 @@ def render_report(
     return "\n".join(lines) + "\n"
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Generate a DOCX viva trigger report.")
-    parser.add_argument("submitted", type=Path, help="Submitted DOCX path")
-    parser.add_argument(
-        "--baseline",
-        type=Path,
-        nargs="*",
-        default=[],
-        help="Optional authenticated baseline DOCX files",
-    )
-    parser.add_argument("--output", type=Path, default=Path("viva_report.md"), help="Markdown output path")
-    args = parser.parse_args()
-
-    submitted_blobs = extract_docx_data(args.submitted)
+def generate_report(submitted: Path, baselines: List[Path], output: Path) -> None:
+    submitted_blobs = extract_docx_data(submitted)
     metadata = extract_metadata(submitted_blobs["core_xml"], submitted_blobs["app_xml"])
     submitted_paragraphs = extract_paragraphs(submitted_blobs["document_xml"])
     submitted_metrics = compute_metrics(submitted_paragraphs)
@@ -363,7 +349,7 @@ def main() -> None:
     findings.extend(find_outlier_paragraphs(submitted_metrics))
 
     baseline_metrics: List[ParagraphMetrics] = []
-    for base in args.baseline:
+    for base in baselines:
         try:
             base_blobs = extract_docx_data(base)
             base_paras = extract_paragraphs(base_blobs["document_xml"])
@@ -378,9 +364,91 @@ def main() -> None:
             )
 
     findings.extend(compare_to_baseline(submitted_metrics, baseline_metrics))
+    report = render_report(submitted, metadata, findings, len(submitted_paragraphs))
+    output.write_text(report, encoding="utf-8")
 
-    report = render_report(args.submitted, metadata, findings, len(submitted_paragraphs))
-    args.output.write_text(report, encoding="utf-8")
+
+def launch_gui() -> None:
+    root = tk.Tk()
+    root.title("DOCX Viva Trigger Report")
+    root.geometry("760x420")
+
+    submitted_var = tk.StringVar()
+    baselines_var = tk.StringVar()
+    output_var = tk.StringVar(value=str(Path.cwd() / "viva_report.md"))
+
+    def pick_submitted() -> None:
+        chosen = filedialog.askopenfilename(title="Choose submitted DOCX", filetypes=[("Word", "*.docx")])
+        if chosen:
+            submitted_var.set(chosen)
+
+    def pick_baselines() -> None:
+        chosen = filedialog.askopenfilenames(title="Choose baseline DOCX files", filetypes=[("Word", "*.docx")])
+        if chosen:
+            baselines_var.set(";".join(chosen))
+
+    def pick_output() -> None:
+        chosen = filedialog.asksaveasfilename(title="Save report as", defaultextension=".md", filetypes=[("Markdown", "*.md")])
+        if chosen:
+            output_var.set(chosen)
+
+    def run_report() -> None:
+        submitted_text = submitted_var.get().strip()
+        if not submitted_text:
+            messagebox.showerror("Missing file", "Please select a submitted DOCX file.")
+            return
+        submitted = Path(submitted_text)
+        if not submitted.exists():
+            messagebox.showerror("Missing file", f"Submitted file not found:\n{submitted}")
+            return
+
+        baseline_items = [Path(p) for p in baselines_var.get().split(";") if p.strip()]
+        output = Path(output_var.get().strip() or "viva_report.md")
+
+        try:
+            generate_report(submitted, baseline_items, output)
+            status.configure(text=f"Report generated: {output}")
+            messagebox.showinfo("Done", f"Report created:\n{output}")
+        except Exception as exc:
+            messagebox.showerror("Error", f"Could not generate report:\n{exc}")
+
+    frame = tk.Frame(root, padx=12, pady=12)
+    frame.pack(fill="both", expand=True)
+
+    tk.Label(frame, text="Submitted DOCX").grid(row=0, column=0, sticky="w")
+    tk.Entry(frame, textvariable=submitted_var, width=72).grid(row=1, column=0, sticky="we", padx=(0, 8))
+    tk.Button(frame, text="Browse…", command=pick_submitted).grid(row=1, column=1)
+
+    tk.Label(frame, text="Baseline DOCX files (optional)").grid(row=2, column=0, sticky="w", pady=(12, 0))
+    tk.Entry(frame, textvariable=baselines_var, width=72).grid(row=3, column=0, sticky="we", padx=(0, 8))
+    tk.Button(frame, text="Browse…", command=pick_baselines).grid(row=3, column=1)
+
+    tk.Label(frame, text="Output report (.md)").grid(row=4, column=0, sticky="w", pady=(12, 0))
+    tk.Entry(frame, textvariable=output_var, width=72).grid(row=5, column=0, sticky="we", padx=(0, 8))
+    tk.Button(frame, text="Save as…", command=pick_output).grid(row=5, column=1)
+
+    tk.Button(frame, text="Generate report", command=run_report, width=20).grid(row=6, column=0, sticky="w", pady=(18, 0))
+
+    status = tk.Label(frame, text="Tip: if you double-clicked previously and the window closed, use this GUI or run from terminal.")
+    status.grid(row=7, column=0, columnspan=2, sticky="w", pady=(14, 0))
+
+    frame.grid_columnconfigure(0, weight=1)
+    root.mainloop()
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Generate a DOCX viva trigger report.")
+    parser.add_argument("submitted", type=Path, nargs="?", help="Submitted DOCX path")
+    parser.add_argument("--baseline", type=Path, nargs="*", default=[], help="Optional authenticated baseline DOCX files")
+    parser.add_argument("--output", type=Path, default=Path("viva_report.md"), help="Markdown output path")
+    parser.add_argument("--gui", action="store_true", help="Launch a simple desktop UI")
+    args = parser.parse_args()
+
+    if args.gui or args.submitted is None:
+        launch_gui()
+        return
+
+    generate_report(args.submitted, args.baseline, args.output)
     print(f"Report written to {args.output}")
 
 

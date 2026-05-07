@@ -19,11 +19,32 @@ The tool is designed for **authentication support**, not AI detection. It can he
   - `AI-ASSISTED INTERPRETATION`
   - `REQUIRES HUMAN REVIEW`
 
+## Why the window was closing
+
+If you double-click a Python file, some systems open a terminal briefly and close it when the script exits. The tool expects either:
+- command-line arguments, or
+- the built-in GUI mode.
+
 ## Usage
+
+### Option A: simple UI (recommended)
+
+```bash
+python3 docx_viva_trigger.py --gui
+```
+
+If you run `python3 docx_viva_trigger.py` with no arguments, it now opens the same UI.
+
+### Option B: command line
 
 ```bash
 python3 docx_viva_trigger.py submitted.docx --baseline baseline1.docx baseline2.docx --output viva_report.md
 ```
+
+## Output location
+
+- By default, output is written to `viva_report.md` in your current working directory.
+- In GUI mode, you can choose the output path with **Save as…**.
 
 ## Important caution
 
