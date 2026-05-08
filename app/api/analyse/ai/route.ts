@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { buildReport } from "@/lib/laisr/analyze";
+import { runAiReview } from "@/lib/laisr/ai-review";
 import { extractDocx } from "@/lib/laisr/docx";
 
 export const runtime = "nodejs";
@@ -16,30 +17,26 @@ export async function POST(request: Request) {
     const candidateId = String(formData.get("candidateId") || "");
     const subject = String(formData.get("subject") || "");
     const doc = await extractDocx(file);
-    const report = buildReport({
+    const baseReport = buildReport({
       doc,
       candidateId,
       subject,
       aiReview: {
         enabled: Boolean(process.env.OPENAI_API_KEY),
         status: process.env.OPENAI_API_KEY ? "pending" : "not_configured",
-        opinion: process.env.OPENAI_API_KEY
-          ? "Deterministic evidence is ready. AI interpretation is still running."
-          : "AI analysis is not configured. Add OPENAI_API_KEY to enable the interpretive review layer.",
-        counterArgument: process.env.OPENAI_API_KEY
-          ? "The AI counter-position will appear when the AI review completes."
-          : "The algorithmic review remains available without AI analysis.",
-        assessment: process.env.OPENAI_API_KEY
-          ? "The final AI-assisted assessment will update shortly."
-          : "No AI opinion was generated for this report.",
+        opinion: "",
+        counterArgument: "",
+        assessment: "",
         vivaQuestions: []
       }
     });
+    const aiReview = await runAiReview(doc, baseReport.findings, baseReport.summary.recommendation);
+    const report = buildReport({ doc, candidateId, subject, aiReview });
 
     return NextResponse.json(report);
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Unable to analyse this document." },
+      { error: error instanceof Error ? error.message : "Unable to complete AI analysis." },
       { status: 400 }
     );
   }

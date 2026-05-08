@@ -286,7 +286,7 @@ function LaisrPdf({
         <Text style={styles.paragraph}>{report.assessment}</Text>
       </ReportPage>
 
-      {includeVivaQuestions ? (
+      {includeVivaQuestions && report.vivaQuestions.length > 0 ? (
         <ReportPage title="Part 4 - Viva Questions">
           {report.vivaQuestions.map((question, index) => (
             <View style={styles.question} key={`${question.question}-${index}`} wrap={false}>

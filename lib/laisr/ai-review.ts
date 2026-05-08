@@ -1,8 +1,12 @@
 import OpenAI from "openai";
 import type { ExtractedDocx } from "./docx";
-import type { AiReview, Finding } from "./types";
+import type { AiReview, AnalysisSummary, Finding } from "./types";
 
-export async function runAiReview(doc: ExtractedDocx, findings: Finding[]): Promise<AiReview> {
+export async function runAiReview(
+  doc: ExtractedDocx,
+  findings: Finding[],
+  recommendation: AnalysisSummary["recommendation"]
+): Promise<AiReview> {
   if (!process.env.OPENAI_API_KEY) {
     return {
       enabled: false,
@@ -22,13 +26,14 @@ export async function runAiReview(doc: ExtractedDocx, findings: Finding[]): Prom
         {
           role: "developer",
           content:
-            "You are an academic integrity review assistant for LAISR. Do not accuse a student of misconduct. Treat AI analysis as one interpretive evidence stream alongside metadata, XML, textual, stylometric, linguistic, and authenticated-work evidence. Use cautious language. Your task is to help an examiner decide whether further review or viva discussion is warranted, and to generate fair questions that let a candidate demonstrate authorship."
+            "You are an academic integrity review assistant for LAISR. Do not accuse a student of misconduct. Treat AI analysis as one interpretive evidence stream alongside metadata, XML, textual, stylometric, linguistic, and authenticated-work evidence. Use cautious language. Your task is to help an examiner decide whether further review or viva discussion is warranted."
         },
         {
           role: "user",
           content: JSON.stringify({
             task:
-              "Review this document text alongside algorithmic findings. Return JSON only with keys opinion, counterArgument, assessment, vivaQuestions. The opinion should interpret evidence for and against further investigation. The counterArgument should present plausible innocent explanations. The assessment should say which argument currently holds most weight and whether viva discussion would be proportionate. Do not use percentage-likelihood claims. vivaQuestions must be an array of objects with question and rationale, linked to the text or findings where possible.",
+              "Review this document text alongside algorithmic findings. Return JSON only with keys opinion, counterArgument, assessment, vivaQuestions. The opinion should interpret the evidence in the direction of the current recommendation. The counterArgument must argue the opposite side: if the current recommendation is low concern, make the strongest fair case for possible AI involvement or further investigation; if the current recommendation suggests review or viva, make the strongest fair innocent explanation. The assessment should say which argument currently holds most weight and why. Do not use percentage-likelihood claims. Only return vivaQuestions if the recommendation is Viva recommended or Strong viva recommended; otherwise return an empty array. vivaQuestions must be objects with question and rationale, linked to the text or findings where possible.",
+            recommendation,
             textPreview: doc.text.slice(0, 9000),
             findings: findings.map((finding) => ({
               category: finding.category,

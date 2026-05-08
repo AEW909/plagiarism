@@ -9,6 +9,7 @@ import {
   FileSearch,
   FileText,
   Loader2,
+  SearchCheck,
   ShieldCheck,
   Upload,
   Users
@@ -25,6 +26,7 @@ export default function Home() {
   const [report, setReport] = useState<LaisrReport | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<ReportTab>("evidence");
   const [includeVivaInPdf, setIncludeVivaInPdf] = useState(true);
@@ -93,10 +95,66 @@ export default function Home() {
 
       setReport(payload);
       setActiveTab("evidence");
+      setLoading(false);
+
+      if (aiConfig?.aiConfigured) {
+        await enrichWithAi(file, candidateId, subject);
+      }
     } catch (analysisError) {
       setError(analysisError instanceof Error ? analysisError.message : "Analysis failed.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function enrichWithAi(selectedFile: File, selectedCandidateId: string, selectedSubject: string) {
+    setAiLoading(true);
+
+    const formData = new FormData();
+    formData.append("file", selectedFile);
+    formData.append("candidateId", selectedCandidateId);
+    formData.append("subject", selectedSubject);
+
+    try {
+      const response = await fetch("/api/analyse/ai", {
+        method: "POST",
+        body: formData
+      });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload.error || "AI analysis failed.");
+      }
+
+      setReport(payload);
+    } catch (aiError) {
+      setReport((currentReport) =>
+        currentReport
+          ? {
+              ...currentReport,
+              aiReview: {
+                enabled: true,
+                status: "failed",
+                opinion: "AI analysis failed while deterministic review remained available.",
+                counterArgument: "Do not treat absence of AI output as evidence either way.",
+                assessment: aiError instanceof Error ? aiError.message : "AI analysis failed.",
+                vivaQuestions: []
+              },
+              evidenceChecks: currentReport.evidenceChecks.map((check) =>
+                check.id === "ai"
+                  ? {
+                      ...check,
+                      status: "issues",
+                      summary: "AI review failed",
+                      detail: aiError instanceof Error ? aiError.message : "AI analysis failed."
+                    }
+                  : check
+              )
+            }
+          : currentReport
+      );
+    } finally {
+      setAiLoading(false);
     }
   }
 
@@ -202,13 +260,15 @@ export default function Home() {
           </label>
           <button className="primary-button" type="button" disabled={loading} onClick={analyseDocument}>
             {loading ? <Loader2 className="spin" size={18} /> : <FileSearch size={18} />}
-            Analyse document
+            {loading ? "Checking evidence" : "Analyse document"}
           </button>
           <div className={aiConfig?.aiConfigured ? "config-pill ready" : "config-pill"}>
-            <Brain size={15} />
+            {aiLoading ? <Loader2 className="spin" size={15} /> : <Brain size={15} />}
             {aiConfig
-              ? aiConfig.aiConfigured
-                ? `AI review enabled (${aiConfig.model})`
+              ? aiLoading
+                ? `AI review running (${aiConfig.model})`
+                : aiConfig.aiConfigured
+                  ? `AI review enabled (${aiConfig.model})`
                 : "AI review not configured"
               : "Checking AI configuration..."}
           </div>
@@ -226,7 +286,7 @@ export default function Home() {
               </p>
               <strong>{report.summary.recommendation}</strong>
               <span>
-                {report.summary.seriousCount} serious/critical indicators{" · "}
+                {report.summary.seriousCount} serious/critical indicators{" - "}
                 {report.summary.notableCount} notable indicators
               </span>
             </div>
@@ -339,16 +399,44 @@ function EvidenceTab({
 }) {
   return (
     <div className="findings-stack">
-      <article className="panel">
+      <article className="panel evidence-overview">
         <h2>
-          <FileText size={18} />
-          Document metadata
+          <SearchCheck size={18} />
+          Evidence checklist
         </h2>
-        <div className="metadata-grid">
-          <SummaryItem label="Creator" value={report.metadata.creator} />
-          <SummaryItem label="Last editor" value={report.metadata.lastModifiedBy} />
-          <SummaryItem label="Revision" value={report.metadata.revision} />
-          <SummaryItem label="Application" value={report.metadata.application} />
+        <div className="checklist">
+          {report.evidenceChecks.map((check) => (
+            <details className="check-row" key={check.id}>
+              <summary>
+                <span>
+                  <strong>{check.label}</strong>
+                  <small>{check.summary}</small>
+                </span>
+                <mark className={check.status === "issues" ? "tag issue" : "tag clear"}>
+                  {check.status === "issues" ? "Issues detected" : "Clear"}
+                </mark>
+              </summary>
+              <div className="check-detail">
+                <p>{check.detail}</p>
+                {check.id === "metadata" ? (
+                  <div className="metadata-grid">
+                    <SummaryItem label="Creator" value={report.metadata.creator} />
+                    <SummaryItem label="Last editor" value={report.metadata.lastModifiedBy} />
+                    <SummaryItem label="Revision" value={report.metadata.revision} />
+                    <SummaryItem label="Application" value={report.metadata.application} />
+                  </div>
+                ) : null}
+                {check.findingIds.length > 0 ? (
+                  <ul className="linked-findings">
+                    {check.findingIds.map((findingId) => {
+                      const finding = report.findings.find((item) => item.id === findingId);
+                      return finding ? <li key={finding.id}>{finding.title}</li> : null;
+                    })}
+                  </ul>
+                ) : null}
+              </div>
+            </details>
+          ))}
         </div>
       </article>
 
@@ -432,8 +520,34 @@ function JudgementTab({
   pdfLoading: boolean;
   report: LaisrReport;
 }) {
+  const vivaRecommended =
+    report.summary.recommendation === "Viva recommended" ||
+    report.summary.recommendation === "Strong viva recommended";
+
   return (
     <div className="reasoning-stack">
+      <section className="panel">
+        <h2>
+          <AlertTriangle size={18} />
+          Outcome scale
+        </h2>
+        <div className="outcome-ladder">
+          {OUTCOMES.map((outcome) => (
+            <div
+              className={
+                outcome.label === report.summary.recommendation
+                  ? `outcome-step active ${outcome.tone}`
+                  : `outcome-step ${outcome.tone}`
+              }
+              key={outcome.label}
+            >
+              <span>{outcome.label}</span>
+              <p>{outcome.description}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
       <ReasoningBlock
         body={report.assessment}
         icon={<CheckCircle2 size={18} />}
@@ -443,17 +557,19 @@ function JudgementTab({
       <section className="panel">
         <div className="judgement-header">
           <h2>
-            <FileQuestion size={18} />
-            Viva options
+            <Download size={18} />
+            Report export
           </h2>
-          <label className="toggle-row">
-            <input
-              checked={includeVivaInPdf}
-              type="checkbox"
-              onChange={(event) => onToggleViva(event.target.checked)}
-            />
-            Include viva questions in PDF
-          </label>
+          {vivaRecommended ? (
+            <label className="toggle-row">
+              <input
+                checked={includeVivaInPdf}
+                type="checkbox"
+                onChange={(event) => onToggleViva(event.target.checked)}
+              />
+              Include viva questions in PDF
+            </label>
+          ) : null}
         </div>
 
         <div className="report-actions solid">
@@ -467,20 +583,70 @@ function JudgementTab({
         </div>
       </section>
 
-      <section className="panel">
-        <h2>Suggested viva questions</h2>
-        <div className="question-list">
-          {report.vivaQuestions.map((question, index) => (
-            <div className="question" key={`${question.question}-${index}`}>
-              <strong>{index + 1}. {question.question}</strong>
-              <p>{question.rationale}</p>
+      {vivaRecommended ? (
+        <section className="panel">
+          <h2>
+            <FileQuestion size={18} />
+            Viva options
+          </h2>
+          <details className="viva-details">
+            <summary>
+              Suggested viva questions
+              <span>{report.vivaQuestions.length} generated</span>
+            </summary>
+            <div className="question-list">
+              {report.vivaQuestions.map((question, index) => (
+                <div className="question" key={`${question.question}-${index}`}>
+                  <strong>{index + 1}. {question.question}</strong>
+                  <p>{question.rationale}</p>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-      </section>
+          </details>
+        </section>
+      ) : (
+        <section className="panel">
+          <h2>
+            <FileQuestion size={18} />
+            Viva options
+          </h2>
+          <p className="muted">
+            Viva questions are not generated because the current judgement does not
+            recommend a viva. If later evidence changes the outcome, this section will
+            appear collapsed with targeted questions.
+          </p>
+        </section>
+      )}
     </div>
   );
 }
+
+const OUTCOMES: Array<{
+  label: LaisrReport["summary"]["recommendation"];
+  description: string;
+  tone: "clear" | "watch" | "moderate" | "high";
+}> = [
+  {
+    label: "No significant indicators detected",
+    description: "Checks completed without notable concern from the current evidence streams.",
+    tone: "clear"
+  },
+  {
+    label: "Examiner review recommended",
+    description: "Some indicators are present and should be read by an examiner before deciding next steps.",
+    tone: "watch"
+  },
+  {
+    label: "Viva recommended",
+    description: "Indicators are sufficient to make an authorship discussion proportionate.",
+    tone: "moderate"
+  },
+  {
+    label: "Strong viva recommended",
+    description: "Multiple or serious indicators cluster enough to prioritise viva preparation.",
+    tone: "high"
+  }
+];
 
 function ReasoningBlock({
   body,
@@ -563,6 +729,7 @@ function aiStatus(status: LaisrReport["aiReview"]["status"]) {
   return {
     completed: "AI review completed",
     failed: "AI review unavailable",
+    pending: "AI review in progress",
     not_configured: "AI review not configured"
   }[status];
 }

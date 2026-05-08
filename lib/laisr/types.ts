@@ -13,6 +13,16 @@ export type Finding = {
   vivaAngle: string;
 };
 
+export type EvidenceCheck = {
+  id: string;
+  label: string;
+  category: string;
+  status: "clear" | "issues";
+  summary: string;
+  detail: string;
+  findingIds: string[];
+};
+
 export type DocumentMetadata = {
   creator: string;
   lastModifiedBy: string;
@@ -42,7 +52,7 @@ export type AnalysisSummary = {
 
 export type AiReview = {
   enabled: boolean;
-  status: "not_configured" | "completed" | "failed";
+  status: "not_configured" | "pending" | "completed" | "failed";
   opinion: string;
   counterArgument: string;
   assessment: string;
@@ -58,6 +68,7 @@ export type VivaQuestion = {
 export type LaisrReport = {
   summary: AnalysisSummary;
   metadata: DocumentMetadata;
+  evidenceChecks: EvidenceCheck[];
   findings: Finding[];
   interpretation: string;
   counterArgument: string;

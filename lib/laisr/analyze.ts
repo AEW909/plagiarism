@@ -1,5 +1,5 @@
 import type { ExtractedDocx } from "./docx";
-import type { Finding, LaisrReport, VivaQuestion } from "./types";
+import type { EvidenceCheck, Finding, LaisrReport, VivaQuestion } from "./types";
 
 type ReportInput = {
   doc: ExtractedDocx;
@@ -164,7 +164,10 @@ export function buildReport(input: ReportInput): LaisrReport {
   const seriousCount = findings.filter((finding) => finding.severity === "critical" || finding.severity === "serious").length;
   const notableCount = findings.filter((finding) => finding.severity === "notable").length;
   const recommendation = getRecommendation(seriousCount, notableCount);
-  const vivaQuestions = buildVivaQuestions(findings, input.subject);
+  const vivaQuestions = shouldRecommendViva(recommendation)
+    ? buildVivaQuestions(findings, input.subject)
+    : [];
+  const evidenceChecks = buildEvidenceChecks(findings, input.aiReview);
 
   return {
     summary: {
@@ -178,14 +181,112 @@ export function buildReport(input: ReportInput): LaisrReport {
       recommendation
     },
     metadata: input.doc.metadata,
+    evidenceChecks,
     findings,
     interpretation: buildInterpretation(findings),
-    counterArgument: buildCounterArgument(findings),
+    counterArgument: buildCounterArgument(findings, recommendation),
     assessment: buildAssessment(findings, recommendation),
-    vivaQuestions: [...vivaQuestions, ...input.aiReview.vivaQuestions],
+    vivaQuestions: shouldRecommendViva(recommendation)
+      ? [...vivaQuestions, ...input.aiReview.vivaQuestions]
+      : [],
     aiReview: input.aiReview,
     extractedTextPreview: input.doc.text.slice(0, 1400)
   };
+}
+
+const CHECK_DEFINITIONS = [
+  {
+    id: "metadata",
+    label: "Document metadata",
+    category: "Document Metadata",
+    clearDetail:
+      "Checked creator, last editor, created/modified dates, revision count, editing time, page count, word count, and application metadata."
+  },
+  {
+    id: "xml",
+    label: "Word XML forensics",
+    category: "XML Forensics",
+    clearDetail:
+      "Checked RSID distribution, hidden or white text, browser-origin font markers, tracked-formatting signals, and font diversity."
+  },
+  {
+    id: "textual",
+    label: "Textual anomalies",
+    category: "Textual Anomalies",
+    clearDetail:
+      "Checked suspicious substitutions, structural grammar artefacts, merged compound words, and copy/paste artefacts."
+  },
+  {
+    id: "stylometric",
+    label: "Stylometric indicators",
+    category: "Stylometric Indicators",
+    clearDetail:
+      "Checked transition phrase density, repeated opener patterns, paragraph similarity, and repeated/circular phrasing signals."
+  },
+  {
+    id: "linguistic",
+    label: "Linguistic consistency",
+    category: "Linguistic Consistency",
+    clearDetail:
+      "Checked segment-level complexity, readability shifts, formal register spikes, and consistency against the document's own baseline."
+  },
+  {
+    id: "ai",
+    label: "AI textual review",
+    category: "AI Textual Review",
+    clearDetail:
+      "Checked whether the optional AI interpretation layer completed and contributed review, counter-argument, assessment, and viva-question support."
+  }
+] as const;
+
+function buildEvidenceChecks(findings: Finding[], aiReview: LaisrReport["aiReview"]): EvidenceCheck[] {
+  return CHECK_DEFINITIONS.map((definition) => {
+    if (definition.id === "ai") {
+      const aiIssue = aiReview.status === "failed";
+      return {
+        id: definition.id,
+        label: definition.label,
+        category: definition.category,
+        status: aiIssue ? "issues" : "clear",
+        summary:
+          aiReview.status === "completed"
+            ? "AI review completed"
+            : aiReview.status === "failed"
+              ? "AI review failed"
+              : aiReview.status === "pending"
+                ? "AI review in progress"
+              : "AI review not configured",
+        detail:
+          aiReview.status === "completed"
+            ? "The AI layer reviewed the text and algorithmic findings to provide interpretation, counter-argument, assessment, and viva-question support."
+            : aiReview.status === "failed"
+              ? aiReview.assessment
+              : aiReview.status === "pending"
+                ? "The deterministic checks have completed. The AI interpretation layer is still running and will update this report when it returns."
+              : "The deterministic checks completed, but no AI opinion was generated because OPENAI_API_KEY was not configured.",
+        findingIds: []
+      };
+    }
+
+    const categoryFindings = findings.filter((finding) => finding.category === definition.category);
+    const issueCount = categoryFindings.length;
+
+    return {
+      id: definition.id,
+      label: definition.label,
+      category: definition.category,
+      status: issueCount > 0 ? "issues" : "clear",
+      summary:
+        issueCount > 0
+          ? `${issueCount} issue${issueCount === 1 ? "" : "s"} detected`
+          : "No issues detected",
+      detail:
+        issueCount > 0
+          ? `This check produced ${issueCount} finding${issueCount === 1 ? "" : "s"} in the report. Expand the related finding cards below for evidence, benchmarks, interpretation, counter-argument, and viva angle.`
+          : definition.clearDetail,
+      findingIds: categoryFindings.map((finding) => finding.id)
+    };
+  });
 }
 
 function analyseMetadata(doc: ExtractedDocx): Finding[] {
@@ -377,9 +478,13 @@ function buildInterpretation(findings: Finding[]) {
   return "The document contains observable indicators that may warrant examiner attention. The strongest interpretation depends on whether findings cluster in the same sections and whether the candidate can explain the drafting process, sources, and argument choices in viva.";
 }
 
-function buildCounterArgument(findings: Finding[]) {
+function buildCounterArgument(findings: Finding[], recommendation: LaisrReport["summary"]["recommendation"]) {
   if (findings.length === 0) {
-    return "Absence of detected indicators does not prove authorship, but there is no algorithmic basis here for escalating the document on these checks alone.";
+    return "The strongest argument for further investigation is that absence of detected indicators does not prove authorship. AI involvement can leave few DOCX artefacts, paraphrased assistance may not trigger textual checks, and a polished document may still warrant discussion if external context raises concern.";
+  }
+
+  if (recommendation === "No significant indicators detected") {
+    return "Although the current checks do not support escalation, a cautious examiner could still consider context outside this document, such as a sudden change from authenticated work, missing drafts, or inability to explain sources. Those concerns would need separate evidence.";
   }
 
   const categories = Array.from(new Set(findings.map((finding) => finding.category))).join(", ");
@@ -444,6 +549,10 @@ function getRecommendation(seriousCount: number, notableCount: number): LaisrRep
   }
 
   return "No significant indicators detected";
+}
+
+function shouldRecommendViva(recommendation: LaisrReport["summary"]["recommendation"]) {
+  return recommendation === "Viva recommended" || recommendation === "Strong viva recommended";
 }
 
 function tokenize(text: string) {
