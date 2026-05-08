@@ -2,11 +2,14 @@
 
 import {
   AlertTriangle,
+  ArrowLeft,
   Brain,
   CheckCircle2,
+  Clock,
   Download,
   FileQuestion,
   FileSearch,
+  Files,
   FileText,
   Loader2,
   SearchCheck,
@@ -18,8 +21,10 @@ import { useEffect, useState } from "react";
 import type { LaisrReport, Severity } from "@/lib/laisr/types";
 
 type ReportTab = "evidence" | "interpretation" | "counter" | "judgement";
+type AppView = "home" | "single";
 
 export default function Home() {
+  const [view, setView] = useState<AppView>("home");
   const [file, setFile] = useState<File | null>(null);
   const [authenticatedFile, setAuthenticatedFile] = useState<File | null>(null);
   const [candidateId, setCandidateId] = useState("");
@@ -219,77 +224,37 @@ export default function Home() {
     URL.revokeObjectURL(url);
   }
 
+  function resetReview() {
+    setReport(null);
+    setFile(null);
+    setAuthenticatedFile(null);
+    setCandidateId("");
+    setSubject("");
+    setError("");
+    setAnalysisStage("idle");
+    setActiveTab("evidence");
+    setView("home");
+  }
+
   return (
     <main className="shell">
-      <section className="hero">
+      <header className="app-header">
         <div>
-          <p className="eyebrow">
-            <ShieldCheck size={16} />
-            LAISR
-          </p>
-          <h1>Learning Authorship Integrity Signal Review</h1>
-          <p className="lede">
-            Upload a DOCX submission to collect forensic, linguistic, stylometric, and
-            AI-assisted review signals for fair viva preparation.
-          </p>
+          <div className="brand-mark">
+            <ShieldCheck size={22} />
+          </div>
+          <div>
+            <strong>LAISR</strong>
+            <span>Learning Authorship Integrity Signal Review</span>
+          </div>
         </div>
-      </section>
-
-      <section className="upload-workspace">
-        <div className="upload-stack">
-          <label className="upload-zone">
-            <Upload size={30} />
-            <strong>{file ? file.name : "Choose DOCX submission"}</strong>
-            <span>Document text and XML are analysed in this session.</span>
-            <input
-              type="file"
-              accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-              onChange={(event) => setFile(event.target.files?.[0] ?? null)}
-            />
-          </label>
-          <label className="upload-zone compact">
-            <FileText size={24} />
-            <strong>{authenticatedFile ? authenticatedFile.name : "Optional authenticated sample"}</strong>
-            <span>Known student writing enables a style comparison.</span>
-            <input
-              type="file"
-              accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-              onChange={(event) => setAuthenticatedFile(event.target.files?.[0] ?? null)}
-            />
-          </label>
-        </div>
-
-        <div className="details-panel">
-          <label>
-            Candidate ID
-            <input
-              value={candidateId}
-              placeholder="Optional"
-              onChange={(event) => setCandidateId(event.target.value)}
-            />
-          </label>
-          <label>
-            Subject or title
-            <input
-              value={subject}
-              placeholder="Optional"
-              onChange={(event) => setSubject(event.target.value)}
-            />
-          </label>
-          <button className="primary-button" type="button" disabled={loading} onClick={analyseDocument}>
-            {loading ? <Loader2 className="spin" size={18} /> : <FileSearch size={18} />}
-            {loading ? "Checking evidence" : "Analyse document"}
+        {view !== "home" || report ? (
+          <button className="outline-button compact-action" type="button" onClick={resetReview}>
+            <ArrowLeft size={16} />
+            Home
           </button>
-          {aiLoading ? (
-            <div className="analysis-progress">
-              <Loader2 className="spin" size={15} />
-              AI is weighing the evidence before final judgement
-            </div>
-          ) : null}
-          {analysisStage !== "idle" ? <ProgressRail stage={analysisStage} hasAuthenticatedSample={Boolean(authenticatedFile)} /> : null}
-          {error ? <p className="error-text">{error}</p> : null}
-        </div>
-      </section>
+        ) : null}
+      </header>
 
       {report ? (
         <section className="report">
@@ -367,12 +332,159 @@ export default function Home() {
           </section>
         </section>
       ) : (
-        <section className="empty-state">
-          <FileSearch size={28} />
-          <p>Upload a DOCX file to generate a LAISR review.</p>
-        </section>
+        <>
+          {view === "home" ? <HomeOptions onSingleUpload={() => setView("single")} /> : null}
+          {view === "single" ? (
+            <SingleUploadScreen
+              aiLoading={aiLoading}
+              analysisStage={analysisStage}
+              authenticatedFile={authenticatedFile}
+              candidateId={candidateId}
+              error={error}
+              file={file}
+              loading={loading}
+              subject={subject}
+              onAnalyse={analyseDocument}
+              onBack={() => setView("home")}
+              onCandidateIdChange={setCandidateId}
+              onFileChange={setFile}
+              onAuthenticatedFileChange={setAuthenticatedFile}
+              onSubjectChange={setSubject}
+            />
+          ) : null}
+        </>
       )}
     </main>
+  );
+}
+
+function HomeOptions({ onSingleUpload }: { onSingleUpload: () => void }) {
+  return (
+    <section className="home-grid">
+      <button className="home-option active" type="button" onClick={onSingleUpload}>
+        <FileSearch size={24} />
+        <span>
+          <strong>Single file review</strong>
+          <small>Upload one DOCX submission, add an optional authenticated sample, and generate a tabbed evidence report.</small>
+        </span>
+      </button>
+      <button className="home-option disabled" type="button" disabled>
+        <Files size={24} />
+        <span>
+          <strong>Class set review</strong>
+          <small>Batch upload and compare a cohort systematically. Planned for a later build.</small>
+        </span>
+      </button>
+      <button className="home-option disabled" type="button" disabled>
+        <Clock size={24} />
+        <span>
+          <strong>Historical reports</strong>
+          <small>Saved submissions and report history when Supabase storage is added.</small>
+        </span>
+      </button>
+    </section>
+  );
+}
+
+function SingleUploadScreen({
+  aiLoading,
+  analysisStage,
+  authenticatedFile,
+  candidateId,
+  error,
+  file,
+  loading,
+  subject,
+  onAnalyse,
+  onAuthenticatedFileChange,
+  onBack,
+  onCandidateIdChange,
+  onFileChange,
+  onSubjectChange
+}: {
+  aiLoading: boolean;
+  analysisStage: "idle" | "deterministic" | "ai" | "complete";
+  authenticatedFile: File | null;
+  candidateId: string;
+  error: string;
+  file: File | null;
+  loading: boolean;
+  subject: string;
+  onAnalyse: () => void;
+  onAuthenticatedFileChange: (file: File | null) => void;
+  onBack: () => void;
+  onCandidateIdChange: (value: string) => void;
+  onFileChange: (file: File | null) => void;
+  onSubjectChange: (value: string) => void;
+}) {
+  return (
+    <section className="workspace-card">
+      <div className="workspace-title">
+        <button className="icon-button" type="button" onClick={onBack} aria-label="Back to home">
+          <ArrowLeft size={18} />
+        </button>
+        <div>
+          <h1>Single file review</h1>
+          <p>Upload a DOCX submission and collect review signals before deciding whether a viva is warranted.</p>
+        </div>
+      </div>
+
+      <div className="upload-workspace">
+        <div className="upload-stack">
+          <label className="upload-zone">
+            <Upload size={30} />
+            <strong>{file ? file.name : "Choose DOCX submission"}</strong>
+            <span>Document text and XML are analysed in this session.</span>
+            <input
+              type="file"
+              accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+              onChange={(event) => onFileChange(event.target.files?.[0] ?? null)}
+            />
+          </label>
+          <label className="upload-zone compact">
+            <FileText size={24} />
+            <strong>{authenticatedFile ? authenticatedFile.name : "Optional authenticated sample"}</strong>
+            <span>Known student writing enables a style comparison.</span>
+            <input
+              type="file"
+              accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+              onChange={(event) => onAuthenticatedFileChange(event.target.files?.[0] ?? null)}
+            />
+          </label>
+        </div>
+
+        <div className="details-panel">
+          <label>
+            Candidate ID
+            <input
+              value={candidateId}
+              placeholder="Optional"
+              onChange={(event) => onCandidateIdChange(event.target.value)}
+            />
+          </label>
+          <label>
+            Subject or title
+            <input
+              value={subject}
+              placeholder="Optional"
+              onChange={(event) => onSubjectChange(event.target.value)}
+            />
+          </label>
+          <button className="primary-button" type="button" disabled={loading} onClick={onAnalyse}>
+            {loading ? <Loader2 className="spin" size={18} /> : <FileSearch size={18} />}
+            {loading ? "Checking evidence" : "Analyse document"}
+          </button>
+          {aiLoading ? (
+            <div className="analysis-progress">
+              <Loader2 className="spin" size={15} />
+              AI is weighing the evidence before final judgement
+            </div>
+          ) : null}
+          {analysisStage !== "idle" ? <ProgressRail stage={analysisStage} hasAuthenticatedSample={Boolean(authenticatedFile)} /> : null}
+          {error ? <p className="error-text">{error}</p> : null}
+        </div>
+      </div>
+    </section>
   );
 }
 
