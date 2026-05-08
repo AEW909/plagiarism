@@ -154,12 +154,13 @@ const COMMON_WORDS = new Set([
 ]);
 
 export function buildReport(input: ReportInput): LaisrReport {
+  const linguisticProfile = buildLinguisticProfile(input.doc);
   const findings = [
     ...analyseMetadata(input.doc),
     ...analyseXml(input.doc),
     ...analyseTextual(input.doc),
     ...analyseStylometric(input.doc),
-    ...analyseLinguistic(input.doc)
+    ...analyseLinguistic(linguisticProfile)
   ];
   const seriousCount = findings.filter((finding) => finding.severity === "critical" || finding.severity === "serious").length;
   const notableCount = findings.filter((finding) => finding.severity === "notable").length;
@@ -189,6 +190,7 @@ export function buildReport(input: ReportInput): LaisrReport {
     vivaQuestions: shouldRecommendViva(recommendation)
       ? [...vivaQuestions, ...input.aiReview.vivaQuestions]
       : [],
+    linguisticProfile,
     aiReview: input.aiReview,
     extractedTextPreview: input.doc.text.slice(0, 1400)
   };
@@ -548,11 +550,28 @@ function analyseStylometric(doc: ExtractedDocx): Finding[] {
   return findings.slice(0, 18);
 }
 
-function analyseLinguistic(doc: ExtractedDocx): Finding[] {
-  const segments = segmentText(doc.text, 150);
+function analyseLinguistic(profile: LaisrReport["linguisticProfile"]): Finding[] {
   const findings: Finding[] = [];
+
+  profile.segments.forEach((metric) => {
+    if (metric.complexityBand !== "normal") {
+      const direction = metric.complexityBand === "high" ? "more complex" : "simpler";
+      findings.push(makeFinding(`ling-grade-${metric.index}`, "Linguistic Consistency", "notable", `Complexity shift in segment ${metric.index + 1}`, `This section is ${direction} than the document's usual writing level. Estimated grade: ${metric.fkGrade.toFixed(1)}; document average: ${profile.meanFkGrade.toFixed(1)}. Opening: "${clip(metric.opening, 180)}".`, "Expected: sections normally vary, but large jumps above or below the document's own average are worth reviewing.", `Segment ${metric.index + 1}`, "A sudden change in complexity can mean a section came from a different draft, source, or writing process.", "Introductions, technical sections, and conclusions can naturally be simpler or more complex.", "Ask the candidate to explain this section in their own words and describe how it was drafted."));
+    }
+
+    if (metric.registerBand === "high") {
+      findings.push(makeFinding(`ling-register-${metric.index}`, "Linguistic Consistency", "notable", `Formal register spike in segment ${metric.index + 1}`, `This section uses formal academic wording more densely than the rest of the document. Formal-word density: ${metric.formalDensity.toFixed(1)} per 100 words; document average: ${profile.meanFormalDensity.toFixed(1)}. Opening: "${clip(metric.opening, 180)}".`, "Expected: formal wording should usually rise and fall gradually with the topic; this check flags sections that stand out from the document's own pattern.", `Segment ${metric.index + 1}`, "A local spike can suggest pasted, heavily edited, or AI-assisted prose if it is not explained by the subject matter.", "A source-heavy or carefully revised paragraph may legitimately become more formal.", "Ask the candidate to explain the terms in this section and how the wording developed."));
+    }
+  });
+
+  return findings.slice(0, 12);
+}
+
+function buildLinguisticProfile(doc: ExtractedDocx): LaisrReport["linguisticProfile"] {
+  const segments = segmentText(doc.text, 150);
   const metrics = segments.map((segment) => ({
     text: segment,
+    wordCount: tokenize(segment).length,
     fk: estimateGrade(segment),
     formalDensity: density(segment, FORMAL_ACADEMIC)
   }));
@@ -561,18 +580,25 @@ function analyseLinguistic(doc: ExtractedDocx): Finding[] {
   const meanFormal = mean(metrics.map((metric) => metric.formalDensity));
   const sdFormal = sd(metrics.map((metric) => metric.formalDensity), meanFormal);
 
-  metrics.forEach((metric, index) => {
-    if (sdGrade > 0 && Math.abs(metric.fk - meanGrade) > sdGrade * 1.8) {
-      const direction = metric.fk > meanGrade ? "more complex" : "simpler";
-      findings.push(makeFinding(`ling-grade-${index}`, "Linguistic Consistency", "notable", `Complexity shift in segment ${index + 1}`, `Segment ${index + 1} is ${direction} than the document average. Estimated grade: ${metric.fk.toFixed(1)}; document mean: ${meanGrade.toFixed(1)}. Opening: "${clip(metric.text, 180)}".`, "Expected: segment complexity should normally sit within about 1.8 standard deviations of the document mean; this check flags larger deviations.", `Segment ${index + 1}`, "A sharp complexity shift can suggest a different drafting source or a pasted section.", "Students often vary in complexity between introduction, evidence review, and conclusion sections.", "Ask the candidate to explain the argument in this segment and how it was drafted."));
-    }
-
-    if (sdFormal > 0 && metric.formalDensity > meanFormal + sdFormal * 2) {
-      findings.push(makeFinding(`ling-register-${index}`, "Linguistic Consistency", "notable", `Formal register spike in segment ${index + 1}`, `Segment ${index + 1} has a formal academic vocabulary density of ${metric.formalDensity.toFixed(1)} per 100 words. Opening: "${clip(metric.text, 180)}".`, "Expected: formal vocabulary density should usually track the document's own baseline; this check flags segments more than 2 standard deviations above the document mean.", `Segment ${index + 1}`, "A local register spike can indicate inserted or heavily AI-assisted academic prose.", "A source-heavy section or a carefully revised paragraph may legitimately become more formal.", "Ask the candidate to explain the technical terms and how the paragraph was developed."));
-    }
-  });
-
-  return findings.slice(0, 12);
+  return {
+    meanFkGrade: meanGrade,
+    meanFormalDensity: meanFormal,
+    segments: metrics.map((metric, index) => ({
+      index,
+      wordCount: metric.wordCount,
+      fkGrade: metric.fk,
+      formalDensity: metric.formalDensity,
+      complexityBand:
+        sdGrade > 0 && metric.fk > meanGrade + sdGrade * 1.8
+          ? "high"
+          : sdGrade > 0 && metric.fk < meanGrade - sdGrade * 1.8
+            ? "low"
+            : "normal",
+      registerBand:
+        sdFormal > 0 && metric.formalDensity > meanFormal + sdFormal * 2 ? "high" : "normal",
+      opening: clip(metric.text, 220)
+    }))
+  };
 }
 
 function makeFinding(id: string, category: string, severity: Finding["severity"], title: string, evidence: string, normalRangeOrLocation: string, locationOrInterpretation: string, interpretationOrCounterArgument: string, counterArgumentOrVivaAngle: string, vivaAngle?: string): Finding {

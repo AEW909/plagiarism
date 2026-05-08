@@ -63,6 +63,22 @@ export type AiReview = {
   vivaQuestions: VivaQuestion[];
 };
 
+export type LinguisticSegment = {
+  index: number;
+  wordCount: number;
+  fkGrade: number;
+  formalDensity: number;
+  complexityBand: "low" | "normal" | "high";
+  registerBand: "normal" | "high";
+  opening: string;
+};
+
+export type LinguisticProfile = {
+  meanFkGrade: number;
+  meanFormalDensity: number;
+  segments: LinguisticSegment[];
+};
+
 export type VivaQuestion = {
   question: string;
   rationale: string;
@@ -78,6 +94,7 @@ export type LaisrReport = {
   counterArgument: string;
   assessment: string;
   vivaQuestions: VivaQuestion[];
+  linguisticProfile: LinguisticProfile;
   aiReview: AiReview;
   extractedTextPreview: string;
 };

@@ -206,6 +206,8 @@ function LaisrPdf({
   report: LaisrReport;
 }) {
   const groupedFindings = groupFindings(report.findings);
+  const judgementReady = report.aiReview.status === "completed";
+  const coverOutcome = judgementReady ? report.summary.recommendation : "Final judgement pending AI review";
 
   return (
     <Document
@@ -222,8 +224,8 @@ function LaisrPdf({
           </Text>
         </View>
         <View style={styles.coverBody}>
-          <Text style={[styles.badge, { backgroundColor: recommendationColour(report.summary.recommendation) }]}>
-            {report.summary.recommendation}
+          <Text style={[styles.badge, { backgroundColor: judgementReady ? recommendationColour(report.summary.recommendation) : colours.muted }]}>
+            {coverOutcome}
           </Text>
           <MetadataRows
             rows={[
@@ -289,11 +291,13 @@ function LaisrPdf({
         <Text style={styles.paragraph}>{report.aiReview.counterArgument}</Text>
         <Text style={styles.sectionBanner}>Which Argument Holds Most Water</Text>
         <Text style={styles.paragraph}>
-          {report.aiReview.status === "completed" ? report.aiReview.assessment : report.assessment}
+          {report.aiReview.status === "completed"
+            ? report.aiReview.assessment
+            : "Final judgement is not available until the AI weighing step has completed."}
         </Text>
       </ReportPage>
 
-      {includeVivaQuestions && report.vivaQuestions.length > 0 ? (
+      {judgementReady && includeVivaQuestions && report.vivaQuestions.length > 0 ? (
         <ReportPage title="Part 4 - Viva Questions">
           {report.vivaQuestions.map((question, index) => (
             <View style={styles.question} key={`${question.question}-${index}`} wrap={false}>
@@ -329,9 +333,14 @@ function ReportPage({
 }
 
 function SummaryGrid({ report }: { report: LaisrReport }) {
+  const judgementReady = report.aiReview.status === "completed";
+
   return (
     <View style={styles.summaryGrid}>
-      <SummaryBox label="Recommendation" value={report.summary.recommendation} />
+      <SummaryBox
+        label={judgementReady ? "Recommendation" : "Status"}
+        value={judgementReady ? report.summary.recommendation : "Judgement pending"}
+      />
       <SummaryBox label="Serious/Critical" value={String(report.summary.seriousCount)} />
       <SummaryBox label="Notable" value={String(report.summary.notableCount)} />
     </View>

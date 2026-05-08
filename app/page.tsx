@@ -86,7 +86,7 @@ export default function Home() {
       setActiveTab("evidence");
       setLoading(false);
 
-      if (aiConfig?.aiConfigured) {
+      if (aiConfig?.aiConfigured !== false) {
         await enrichWithAi(file, candidateId, subject);
       }
     } catch (analysisError) {
@@ -252,32 +252,32 @@ export default function Home() {
             {loading ? <Loader2 className="spin" size={18} /> : <FileSearch size={18} />}
             {loading ? "Checking evidence" : "Analyse document"}
           </button>
-          <div className={aiConfig?.aiConfigured ? "config-pill ready" : "config-pill"}>
-            {aiLoading ? <Loader2 className="spin" size={15} /> : <Brain size={15} />}
-            {aiConfig
-              ? aiLoading
-                ? `AI review running (${aiConfig.model})`
-                : aiConfig.aiConfigured
-                  ? `AI review enabled (${aiConfig.model})`
-                : "AI review not configured"
-              : "Checking AI configuration..."}
-          </div>
+          {aiLoading ? (
+            <div className="analysis-progress">
+              <Loader2 className="spin" size={15} />
+              AI is weighing the evidence before final judgement
+            </div>
+          ) : null}
           {error ? <p className="error-text">{error}</p> : null}
         </div>
       </section>
 
       {report ? (
         <section className="report">
-          <div className={`recommendation ${recommendationClass(report.summary.recommendation)}`}>
+          <div className={`recommendation ${finalJudgementReady(report) ? recommendationClass(report.summary.recommendation) : "pending"}`}>
             <div>
               <p className="eyebrow">
                 <AlertTriangle size={16} />
-                Review recommendation
+                {finalJudgementReady(report) ? "Review recommendation" : "Evidence triage"}
               </p>
-              <strong>{report.summary.recommendation}</strong>
+              <strong>
+                {finalJudgementReady(report)
+                  ? report.summary.recommendation
+                  : "Final judgement pending AI review"}
+              </strong>
               <span>
                 {report.summary.seriousCount} serious/critical indicators{" - "}
-                {report.summary.notableCount} notable indicators
+                {report.summary.notableCount} notable indicators collected so far
               </span>
             </div>
           </div>
@@ -419,6 +419,7 @@ function EvidenceTab({
                     <p>{report.aiReview.evidenceOpinion}</p>
                   </div>
                 ) : null}
+                {check.id === "linguistic" ? <LinguisticMap report={report} /> : null}
                 {check.findingIds.length > 0 ? (
                   <div className="finding-list">
                     {check.findingIds.map((findingId) => {
@@ -491,11 +492,19 @@ function JudgementTab({
   pdfLoading: boolean;
   report: LaisrReport;
 }) {
+  const judgementReady = finalJudgementReady(report);
   const vivaRecommended =
-    report.summary.recommendation === "Viva recommended" ||
-    report.summary.recommendation === "Strong viva recommended";
+    judgementReady &&
+    (report.summary.recommendation === "Viva recommended" ||
+      report.summary.recommendation === "Strong viva recommended");
   const judgementBody =
-    report.aiReview.status === "completed" ? report.aiReview.assessment : report.assessment;
+    judgementReady
+      ? report.aiReview.assessment
+      : report.aiReview.status === "failed"
+        ? "The final judgement is not available because the AI review failed. The evidence remains available, but LAISR should not present an overall judgement until the AI weighing step completes."
+        : report.aiReview.status === "not_configured"
+          ? "The evidence has been gathered, but final judgement needs the AI weighing step. Add OPENAI_API_KEY to enable the final judgement stage."
+          : "The evidence has been gathered. Final judgement will appear when the AI has reviewed the evidence, counter-position, and overall balance.";
 
   return (
     <div className="reasoning-stack">
@@ -508,7 +517,7 @@ function JudgementTab({
           {OUTCOMES.map((outcome) => (
             <div
               className={
-                outcome.label === report.summary.recommendation
+                judgementReady && outcome.label === report.summary.recommendation
                   ? `outcome-step active ${outcome.tone}`
                   : `outcome-step ${outcome.tone}`
               }
@@ -524,11 +533,7 @@ function JudgementTab({
       <ReasoningBlock
         body={judgementBody}
         icon={<CheckCircle2 size={18} />}
-        title={
-          report.aiReview.status === "completed"
-            ? "Final AI-assisted judgement"
-            : "Final judgement"
-        }
+        title={judgementReady ? "Final AI-assisted judgement" : "Final judgement pending"}
       />
 
       <section className="panel">
@@ -550,7 +555,12 @@ function JudgementTab({
         </div>
 
         <div className="report-actions solid">
-          <button className="primary-button" type="button" disabled={pdfLoading} onClick={onDownloadPdf}>
+          <button
+            className="primary-button"
+            type="button"
+            disabled={pdfLoading || !judgementReady}
+            onClick={onDownloadPdf}
+          >
             {pdfLoading ? <Loader2 className="spin" size={18} /> : <Download size={18} />}
             Download PDF
           </button>
@@ -588,9 +598,9 @@ function JudgementTab({
             Viva options
           </h2>
           <p className="muted">
-            Viva questions are not generated because the current judgement does not
-            recommend a viva. If later evidence changes the outcome, this section will
-            appear collapsed with targeted questions.
+            {judgementReady
+              ? "Viva questions are not generated because the current judgement does not recommend a viva."
+              : "Viva questions will only appear if the completed judgement recommends a viva."}
           </p>
         </section>
       )}
@@ -652,28 +662,63 @@ function FindingCard({ finding }: { finding: LaisrReport["findings"][number] }) 
         <span>{severityLabel(finding.severity)}</span>
         <strong>{finding.title}</strong>
       </div>
+      <p className="plain-summary">{plainFindingSummary(finding)}</p>
       <p>{finding.evidence}</p>
       <dl>
         {finding.normalRange ? (
           <div>
-            <dt>Normal range / benchmark</dt>
+            <dt>What this is compared with</dt>
             <dd>{finding.normalRange}</dd>
           </div>
         ) : null}
         <div>
-          <dt>Interpretation</dt>
+          <dt>Why this may matter</dt>
           <dd>{finding.interpretation}</dd>
         </div>
         <div>
-          <dt>Counter-argument</dt>
+          <dt>Other possible explanations</dt>
           <dd>{finding.counterArgument}</dd>
         </div>
         <div>
-          <dt>Viva angle</dt>
+          <dt>Useful viva follow-up</dt>
           <dd>{finding.vivaAngle}</dd>
         </div>
       </dl>
     </article>
+  );
+}
+
+function LinguisticMap({ report }: { report: LaisrReport }) {
+  const segments = report.linguisticProfile.segments;
+
+  if (segments.length === 0) {
+    return <p>No long-enough text segments were available for complexity mapping.</p>;
+  }
+
+  return (
+    <div className="linguistic-map">
+      <div className="map-head">
+        <span>Complexity and formal-register map</span>
+        <small>Each block is roughly one 150-word section</small>
+      </div>
+      <div className="segment-grid">
+        {segments.map((segment) => (
+          <div
+            className={`segment-cell complexity-${segment.complexityBand} register-${segment.registerBand}`}
+            key={segment.index}
+            title={`Segment ${segment.index + 1}: FK grade ${segment.fkGrade.toFixed(1)}, formal density ${segment.formalDensity.toFixed(1)} per 100 words`}
+          >
+            {segment.index + 1}
+          </div>
+        ))}
+      </div>
+      <div className="map-legend">
+        <span><i className="legend low" />Lower complexity</span>
+        <span><i className="legend normal" />Typical range</span>
+        <span><i className="legend high" />Higher complexity</span>
+        <span><i className="legend register" />Formal wording spike</span>
+      </div>
+    </div>
   );
 }
 
@@ -700,6 +745,38 @@ function recommendationClass(recommendation: LaisrReport["summary"]["recommendat
   }
 
   return "clear";
+}
+
+function finalJudgementReady(report: LaisrReport) {
+  return report.aiReview.status === "completed";
+}
+
+function plainFindingSummary(finding: LaisrReport["findings"][number]) {
+  if (finding.category === "XML Forensics") {
+    return "This comes from the hidden structure inside the Word file rather than from the visible essay text. It is a provenance clue: useful for deciding what to ask about, but not proof by itself.";
+  }
+
+  if (finding.category === "Relationships and Embedded Objects") {
+    return "This checks whether the Word file points to outside links, imported material, images, or embedded files. These traces can explain where content came from or how the final document was assembled.";
+  }
+
+  if (finding.category === "Linguistic Consistency") {
+    return "This compares one section with the candidate's own writing pattern in the rest of the document. A highlighted section is not automatically suspicious, but it is a useful place to test understanding.";
+  }
+
+  if (finding.category === "Stylometric Indicators") {
+    return "This looks for repeated wording patterns across the essay. Repetition can be normal, but concentrated repetition may suggest generated filler, patchwriting, or heavy paraphrasing.";
+  }
+
+  if (finding.category === "Textual Anomalies") {
+    return "This is a visible writing-level signal, such as an odd substitution or formatting artefact. It should be checked in context and discussed with the candidate if it matters.";
+  }
+
+  if (finding.category === "Document Metadata" || finding.category === "Package Forensics") {
+    return "This comes from the file history and packaging information. It can show editing workflow clues, but it can also be affected by templates, cloud saves, exports, or shared devices.";
+  }
+
+  return "This is a review signal, not an accusation. It should be read alongside the rest of the evidence and any explanation the candidate can give.";
 }
 
 function aiStatus(status: LaisrReport["aiReview"]["status"]) {

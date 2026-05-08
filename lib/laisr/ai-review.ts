@@ -27,14 +27,22 @@ export async function runAiReview(
         {
           role: "developer",
           content:
-            "You are giving an academic integrity evidence opinion. Assess the text itself for possible plagiarism, AI assistance, patchwriting, or authorship inconsistency. Use cautious language and do not accuse."
+            "You are giving an academic integrity evidence opinion. Assess the text and the collected file/XML/style findings for possible plagiarism, AI assistance, patchwriting, or authorship inconsistency. Explain technical file evidence in plain examiner-friendly language. Use cautious language and do not accuse."
         },
         {
           role: "user",
           content: JSON.stringify({
             task:
-              "Give the kind of concise opinion you would give if an examiner pasted this work into an AI system and asked whether it shows indicators of plagiarism or AI involvement. Return JSON only with key evidenceOpinion. Mention textual features, limitations, and whether the opinion supports or weakens further investigation.",
-            textPreview: doc.text.slice(0, 9000)
+              "Give the kind of concise opinion you would give if an examiner pasted this work and its DOCX forensic findings into an AI system and asked whether it shows indicators of plagiarism or AI involvement. Return JSON only with key evidenceOpinion. Mention textual features, XML/file-structure clues in plain language, limitations, and whether the opinion supports or weakens further investigation.",
+            textPreview: doc.text.slice(0, 9000),
+            findings: findings.map((finding) => ({
+              category: finding.category,
+              severity: finding.severity,
+              title: finding.title,
+              evidence: finding.evidence,
+              normalRange: finding.normalRange,
+              location: finding.location
+            }))
           })
         }
       ],
