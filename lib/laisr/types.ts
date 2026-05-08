@@ -33,6 +33,9 @@ export type DocumentMetadata = {
   wordCount: string;
   pages: string;
   application: string;
+  template: string;
+  company: string;
+  appVersion: string;
 };
 
 export type AnalysisSummary = {
@@ -53,6 +56,7 @@ export type AnalysisSummary = {
 export type AiReview = {
   enabled: boolean;
   status: "not_configured" | "pending" | "completed" | "failed";
+  evidenceOpinion: string;
   opinion: string;
   counterArgument: string;
   assessment: string;

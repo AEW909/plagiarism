@@ -255,9 +255,14 @@ function LaisrPdf({
             ["Total editing time", report.metadata.totalTimeMinutes],
             ["Word count", report.metadata.wordCount],
             ["Pages", report.metadata.pages],
-            ["Application", report.metadata.application]
+            ["Application", report.metadata.application],
+            ["Template", report.metadata.template],
+            ["Company", report.metadata.company],
+            ["App version", report.metadata.appVersion]
           ]}
         />
+        <Text style={styles.sectionBanner}>AI Plagiarism/Authorship Evidence Opinion</Text>
+        <Text style={styles.paragraph}>{report.aiReview.evidenceOpinion}</Text>
         {Object.entries(groupedFindings).map(([category, findings]) => (
           <View key={category}>
             <Text style={styles.sectionBanner}>{category}</Text>
@@ -283,7 +288,9 @@ function LaisrPdf({
         <Text style={styles.paragraph}>{report.counterArgument}</Text>
         <Text style={styles.paragraph}>{report.aiReview.counterArgument}</Text>
         <Text style={styles.sectionBanner}>Which Argument Holds Most Water</Text>
-        <Text style={styles.paragraph}>{report.assessment}</Text>
+        <Text style={styles.paragraph}>
+          {report.aiReview.status === "completed" ? report.aiReview.assessment : report.assessment}
+        </Text>
       </ReportPage>
 
       {includeVivaQuestions && report.vivaQuestions.length > 0 ? (

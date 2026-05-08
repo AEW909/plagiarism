@@ -196,6 +196,13 @@ export function buildReport(input: ReportInput): LaisrReport {
 
 const CHECK_DEFINITIONS = [
   {
+    id: "package",
+    label: "Package envelope",
+    category: "Package Forensics",
+    clearDetail:
+      "Checked ZIP package member timestamps for unusually compressed rewrite patterns across core document parts."
+  },
+  {
     id: "metadata",
     label: "Document metadata",
     category: "Document Metadata",
@@ -231,11 +238,18 @@ const CHECK_DEFINITIONS = [
       "Checked segment-level complexity, readability shifts, formal register spikes, and consistency against the document's own baseline."
   },
   {
-    id: "ai",
-    label: "AI textual review",
-    category: "AI Textual Review",
+    id: "relationships",
+    label: "Relationships and embedded objects",
+    category: "Relationships and Embedded Objects",
     clearDetail:
-      "Checked whether the optional AI interpretation layer completed and contributed review, counter-argument, assessment, and viva-question support."
+      "Checked relationship files, external targets, hyperlinks, embedded packages/objects, media references, and custom XML relationships."
+  },
+  {
+    id: "ai",
+    label: "AI plagiarism/authorship opinion",
+    category: "AI Evidence Opinion",
+    clearDetail:
+      "Checked whether the optional AI evidence layer completed a direct plagiarism/authorship opinion before the later interpretation and judgement stages."
   }
 ] as const;
 
@@ -250,7 +264,7 @@ function buildEvidenceChecks(findings: Finding[], aiReview: LaisrReport["aiRevie
         status: aiIssue ? "issues" : "clear",
         summary:
           aiReview.status === "completed"
-            ? "AI review completed"
+            ? "AI evidence opinion completed"
             : aiReview.status === "failed"
               ? "AI review failed"
               : aiReview.status === "pending"
@@ -258,7 +272,7 @@ function buildEvidenceChecks(findings: Finding[], aiReview: LaisrReport["aiRevie
               : "AI review not configured",
         detail:
           aiReview.status === "completed"
-            ? "The AI layer reviewed the text and algorithmic findings to provide interpretation, counter-argument, assessment, and viva-question support."
+            ? "The AI evidence layer reviewed the text directly for plagiarism, AI-assistance, patchwriting, or authorship-inconsistency indicators. Interpretation, counter-argument, and final weighing are handled in later report stages."
             : aiReview.status === "failed"
               ? aiReview.assessment
               : aiReview.status === "pending"
@@ -303,11 +317,29 @@ function analyseMetadata(doc: ExtractedDocx): Finding[] {
     findings.push(makeFinding("metadata-revisions", "Document Metadata", "notable", "High revision count", `The document reports ${revisions} revisions across ${pages} pages.`, "Expected: revision counts vary widely, but this check flags >200 revisions for documents of 20 pages or fewer.", "Document properties", "A very high revision count can be consistent with repeated automated saves or extensive copy/edit cycles.", "Cloud editors and autosave behaviour can inflate revision counts without indicating misconduct.", "Ask the candidate to talk through their drafting process and available version history."));
   }
 
+  const words = parseInt(metadata.wordCount, 10);
+  const editMinutes = parseInt(metadata.totalTimeMinutes, 10);
+  if (Number.isFinite(words) && words >= 2500 && Number.isFinite(editMinutes) && editMinutes <= 5) {
+    findings.push(makeFinding("metadata-low-edit-time", "Document Metadata", "notable", "Very low recorded editing time", `The extended properties report ${editMinutes} minutes of total editing time for ${words} words.`, "Expected: TotalTime is application-maintained and imperfect, but long essays with near-zero editing time are a supporting yellow flag when paired with other signals.", "docProps/app.xml", "Low recorded editing time can suggest late-stage assembly, copying into a fresh document, or metadata reset.", "Autosave behaviour, editor differences, copying from legitimate drafts, or app export workflows can make this field unreliable.", "Ask whether the candidate can show drafting history or earlier versions outside this final DOCX."));
+  }
+
+  if (metadata.template !== "N/A" && !/normal\.dotm|normal/i.test(metadata.template)) {
+    findings.push(makeFinding("metadata-template", "Document Metadata", "notable", "Specific template metadata detected", `The document template is recorded as "${metadata.template}".`, "Expected: many student essays use Normal.dotm or a known institutional template; a specific unfamiliar template can indicate borrowed or assembled document origin.", "docProps/app.xml", "Template metadata can point to an external workflow or document source.", "Schools, departments, and accessibility tools may provide legitimate templates.", "Ask the candidate what template or starting file they used."));
+  }
+
+  if (metadata.company !== "N/A" && metadata.company.trim()) {
+    findings.push(makeFinding("metadata-company", "Document Metadata", "notable", "Company metadata present", `The extended properties include company metadata: "${metadata.company}".`, "Expected: student essays often have blank company metadata unless created from an organisational template.", "docProps/app.xml", "Company metadata can indicate an external organisation, template, or device profile.", "It can also be inherited from school-managed devices or institutional templates.", "Ask whether the file began from a school template, workplace template, or shared device."));
+  }
+
+  if (doc.customXml.trim()) {
+    findings.push(makeFinding("metadata-custom-props", "Document Metadata", "notable", "Custom document properties present", "The DOCX includes docProps/custom.xml custom properties.", "Expected: plain essays often have no custom properties; custom properties can be normal in institutional templates but should be understood.", "docProps/custom.xml", "Custom properties may preserve document-management metadata, content-type IDs, or template workflow traces.", "Institutional templates and SharePoint/OneDrive workflows can add legitimate custom properties.", "Ask whether the candidate used an official template or managed document workflow."));
+  }
+
   return findings;
 }
 
 function analyseXml(doc: ExtractedDocx): Finding[] {
-  const findings: Finding[] = [];
+  const findings: Finding[] = [...analysePackage(doc), ...analyseRelationships(doc)];
   const paragraphs = doc.documentXml.match(/<w:p[\s\S]*?<\/w:p>/g) ?? [];
   const rsids = [...doc.documentXml.matchAll(/w:rsidR="([^"]+)"/g)].map((match) => match[1]);
   const uniqueRsids = new Set(rsids);
@@ -315,6 +347,35 @@ function analyseXml(doc: ExtractedDocx): Finding[] {
 
   if ((wordCount < 8000 && uniqueRsids.size > 80) || uniqueRsids.size > 150) {
     findings.push(makeFinding("xml-rsid", "XML Forensics", "notable", "Unusually varied edit-session identifiers", `The DOCX XML contains ${uniqueRsids.size} unique rsidR values across ${paragraphs.length || 1} paragraphs.`, "Expected: no fixed universal norm; this check flags >80 unique RSIDs under 8,000 words, and >150 unique RSIDs unconditionally.", "word/document.xml", "High RSID variety can be consistent with content assembled across multiple edit sessions or sources.", "Normal Word autosave, collaborative editing, and long editing histories can also increase RSID variety.", "Ask the candidate to explain how the document evolved and whether they can show drafts or version history."));
+  }
+
+  const rsidRoot = doc.settingsXml.match(/<w:rsidRoot[^>]*w:val="([^"]+)"/)?.[1];
+  if (rsidRoot) {
+    findings.push(makeFinding("xml-rsid-root", "XML Forensics", "info", "RSID root recorded", `The document settings contain rsidRoot "${rsidRoot}".`, "Expected: rsidRoot is most useful for comparison across suspiciously similar documents, where shared roots can indicate common origin.", "word/settings.xml", "This value can support future cross-document comparison if class-set review is added.", "Within a single document it is not a concern on its own.", "If other submissions are suspicious, compare their rsidRoot and distinctive RSID patterns."));
+  }
+
+  if (/<w:removePersonalInformation\b/.test(doc.settingsXml) || /<w:removeDateAndTime\b/.test(doc.settingsXml)) {
+    findings.push(makeFinding("xml-privacy-scrub", "XML Forensics", "notable", "Personal information removal setting detected", "The settings part indicates personal information and/or annotation dates may be removed on save.", "Expected: these settings can legitimately protect privacy, but they mean missing author/date metadata should not be over-interpreted.", "word/settings.xml", "This can explain why comments/revisions lack author/date evidence or why metadata appears unusually clean.", "It may be enabled by institutional policy, Word privacy settings, or document inspection tools.", "Ask whether the candidate or school used Word's document inspector or privacy-cleaning settings."));
+  }
+
+  const altChunks = findPartMatches(doc.parts, /<w:altChunk\b[^>]*r:id="([^"]+)"/g);
+  if (altChunks.length) {
+    findings.push(makeFinding("xml-altchunk", "XML Forensics", "critical", "External content import marker detected", `${altChunks.length} w:altChunk import marker${altChunks.length === 1 ? "" : "s"} found in DOCX story parts.`, "Expected: altChunk explicitly marks mechanically imported external content and is uncommon in a straightforward student-authored essay.", "word/*.xml", "An unexplained altChunk is strong evidence that content was imported through a DOCX/HTML/RTF/text mechanism.", "There may be legitimate workflows, such as combining drafts or converting from another format.", "Ask what was imported, from where, and whether the candidate can show the original draft/source."));
+  }
+
+  const revisionAuthors = extractAttributeValues(doc.parts, /<w:(?:ins|del)\b[^>]*w:author="([^"]+)"/g);
+  if (revisionAuthors.length) {
+    findings.push(makeFinding("xml-revision-authors", "XML Forensics", "critical", "Tracked revision authors preserved", `Tracked insertions/deletions preserve author value(s): ${Array.from(new Set(revisionAuthors)).slice(0, 6).join(", ")}.`, "Expected: accepted final submissions usually do not preserve unexplained third-party revision authors.", "word/*.xml", "Preserved revision authors are strong evidence of another editing identity in the document history.", "Collaborative feedback, teacher comments, or supervised drafting can be legitimate if disclosed.", "Ask the candidate to explain who made the revisions and what role they played."));
+  }
+
+  const commentAuthors = extractAttributeValues(doc.parts, /<w:comment\b[^>]*w:author="([^"]+)"/g);
+  if (commentAuthors.length) {
+    findings.push(makeFinding("xml-comment-authors", "XML Forensics", "critical", "Comment authors preserved", `Comment metadata preserves author value(s): ${Array.from(new Set(commentAuthors)).slice(0, 6).join(", ")}.`, "Expected: final student submissions commonly have comments removed unless feedback/review remains intentionally.", "word/comments.xml", "Preserved comment authors can identify external reviewers, tutors, collaborators, or prior document owners.", "Teacher feedback or peer review can be legitimate if part of the allowed process.", "Ask the candidate to explain the comments and who authored them."));
+  }
+
+  const languageValues = extractAttributeValues(doc.parts, /<w:lang\b[^>]*w:val="([^"]+)"/g);
+  if (new Set(languageValues).size > 3) {
+    findings.push(makeFinding("xml-language-shifts", "XML Forensics", "notable", "Multiple document language settings", `Detected ${new Set(languageValues).size} distinct w:lang values: ${Array.from(new Set(languageValues)).slice(0, 8).join(", ")}.`, "Expected: multilingual references are normal, but many abrupt locale clusters can support a copied/assembled-source hypothesis.", "word/*.xml", "Language/locale shifts can indicate pasted content from different sources or spell-check environments.", "Normal quotes, references, foreign-language terms, or school templates can create language variation.", "Ask about drafting environment and any copied quoted material."));
   }
 
   paragraphs.forEach((paragraphXml, paragraphIndex) => {
@@ -344,6 +405,24 @@ function analyseXml(doc: ExtractedDocx): Finding[] {
   const fontNames = new Set([...doc.documentXml.matchAll(/w:ascii="([^"]+)"/g)].map((match) => match[1]).filter((font) => !/minor|major|theme/i.test(font)));
   if (fontNames.size > 4) {
     findings.push(makeFinding("xml-font-diversity", "XML Forensics", "notable", "High font diversity", `The document uses ${fontNames.size} named fonts: ${Array.from(fontNames).slice(0, 8).join(", ")}.`, "Expected: many essays use 1-3 named fonts; this check flags more than 4 distinct named fonts after excluding theme defaults.", "word/document.xml", "Multiple fonts can be consistent with content pasted from several sources.", "Templates, headings, bibliographies, and normal formatting changes can legitimately use several fonts.", "Ask the candidate to describe their drafting and formatting process."));
+  }
+
+  const runCount = (doc.documentXml.match(/<w:r\b/g) ?? []).length;
+  const visibleWords = Math.max(1, tokenize(doc.text).length);
+  const runDensity = runCount / visibleWords;
+  if (visibleWords > 300 && runDensity > 2.2) {
+    findings.push(makeFinding("xml-run-density", "XML Forensics", "notable", "High XML run density", `The document has ${runCount} text runs for about ${visibleWords} words (${runDensity.toFixed(1)} runs per word).`, "Expected: simple prose usually has far fewer runs than words; extreme run density can follow web/PDF paste and cleanup.", "word/document.xml", "High run density can be consistent with pasted formatted content, hyperlink cleanup, or automated conversion.", "Frequent styling, comments, citations, or accessibility tools can increase run counts.", "Ask whether content was pasted from formatted notes, web pages, PDFs, or another editor."));
+  }
+
+  const styleIds = new Set(extractAttributeValues({ "word/document.xml": doc.documentXml }, /w:pStyle[^>]*w:val="([^"]+)"/g));
+  const styleDefinitions = (doc.parts["word/styles.xml"]?.match(/<w:style\b/g) ?? []).length;
+  if (styleDefinitions > 80 || styleIds.size > 12) {
+    findings.push(makeFinding("xml-style-complexity", "XML Forensics", "notable", "Large or complex style inventory", `The styles part defines ${styleDefinitions} styles and the body uses ${styleIds.size} paragraph style IDs.`, "Expected: simple essays usually use a small visible subset of styles; large custom inventories can indicate imported templates or merged documents.", "word/styles.xml", "Excessive style definitions can support an external template or document assembly hypothesis.", "Institutional templates can legitimately carry large style sets.", "Ask what template or source document was used as the starting point."));
+  }
+
+  const numberingDefs = (doc.parts["word/numbering.xml"]?.match(/<w:abstractNum\b/g) ?? []).length;
+  if (numberingDefs > 12) {
+    findings.push(makeFinding("xml-numbering-complexity", "XML Forensics", "notable", "Complex numbering definitions", `The numbering part defines ${numberingDefs} abstract numbering structures.`, "Expected: essays with few lists usually have little numbering complexity; imported fragments can drag unused numbering definitions.", "word/numbering.xml", "Complex numbering can support a merged/imported-document hypothesis.", "Templates and reference managers can also add numbering structures.", "Ask whether material was combined from another document or template."));
   }
 
   return findings;
@@ -382,6 +461,61 @@ function analyseTextual(doc: ExtractedDocx): Finding[] {
   }
 
   return findings.slice(0, 20);
+}
+
+function analysePackage(doc: ExtractedDocx): Finding[] {
+  const findings: Finding[] = [];
+  const relevant = doc.zipEntries.filter((entry) =>
+    /^(docProps\/|word\/(?:document|styles|numbering|settings|footnotes|endnotes|header|footer)|word\/_rels\/document\.xml\.rels)/.test(entry.name)
+  );
+  const timestamps = relevant
+    .map((entry) => Date.parse(entry.date))
+    .filter((value) => Number.isFinite(value));
+
+  if (timestamps.length >= 6) {
+    const spreadSeconds = (Math.max(...timestamps) - Math.min(...timestamps)) / 1000;
+    if (spreadSeconds <= 5) {
+      findings.push(makeFinding("package-uniform-timestamps", "Package Forensics", "notable", "Compressed package timestamps", `${timestamps.length} high-value DOCX package parts have timestamps within ${spreadSeconds.toFixed(0)} seconds.`, "Expected: ZIP member timestamps can be rewritten by resave/export, but highly compressed timestamps are a packaging clue when paired with low edit time or revision anomalies.", "DOCX ZIP central directory", "Uniform timestamps can suggest late-stage repackaging, export, conversion, or copying into a newly saved file.", "Normal Word resaves, cloud exports, or document conversion can also rewrite many package timestamps together.", "Ask whether the file was exported, converted, or copied into a fresh document before submission."));
+    }
+  }
+
+  return findings;
+}
+
+function analyseRelationships(doc: ExtractedDocx): Finding[] {
+  const findings: Finding[] = [];
+  const relParts = Object.entries(doc.parts).filter(([name]) => name.endsWith(".rels"));
+  const relationshipXml = relParts.map(([name, xml]) => `${name}\n${xml}`).join("\n");
+  const externalTargets = [...relationshipXml.matchAll(/<Relationship\b[^>]*TargetMode="External"[^>]*Target="([^"]+)"/g)].map((match) => match[1]);
+  const altChunkRels = [...relationshipXml.matchAll(/<Relationship\b[^>]*Type="[^"]*\/aFChunk"[^>]*Target="([^"]+)"/g)].map((match) => match[1]);
+  const embeddedParts = doc.zipEntries.filter((entry) => /^word\/embeddings\//.test(entry.name));
+  const customXmlParts = doc.zipEntries.filter((entry) => /^customXml\//.test(entry.name) && entry.name.endsWith(".xml"));
+  const docPrValues = [...Object.values(doc.parts).join("\n").matchAll(/<wp:docPr\b[^>]*(?:descr|title|name)="([^"]+)"/g)].map((match) => match[1]);
+
+  if (externalTargets.length) {
+    findings.push(makeFinding("rels-external-targets", "Relationships and Embedded Objects", "notable", "External relationship targets detected", `The package contains ${externalTargets.length} external relationship target${externalTargets.length === 1 ? "" : "s"}, including ${externalTargets.slice(0, 5).join(", ")}.`, "Expected: hyperlinks are common in references, but external relationships are important routing evidence and should be reviewed.", "*.rels", "External relationships can reveal source URLs, linked resources, or dependencies not obvious in visible text.", "References, citations, and legitimate hyperlinks can explain external targets.", "Ask whether external links are cited sources, pasted web residue, or linked resources."));
+  }
+
+  if (altChunkRels.length) {
+    findings.push(makeFinding("rels-altchunk-targets", "Relationships and Embedded Objects", "critical", "altChunk import relationship detected", `Relationship files point to altChunk import target(s): ${altChunkRels.slice(0, 5).join(", ")}.`, "Expected: altChunk relationships directly identify mechanically imported content parts and are uncommon in normal essay drafting.", "word/_rels/*.rels", "This is strong structural evidence of external content import.", "A legitimate conversion or draft-combining workflow can create this, but it should be explainable.", "Ask the candidate what was imported and whether they can show the source draft."));
+  }
+
+  if (embeddedParts.length) {
+    findings.push(makeFinding("rels-embedded-objects", "Relationships and Embedded Objects", "critical", "Embedded object/package present", `The DOCX contains ${embeddedParts.length} embedded object/package part${embeddedParts.length === 1 ? "" : "s"}: ${embeddedParts.slice(0, 5).map((entry) => entry.name).join(", ")}.`, "Expected: simple essays rarely need embedded packages; embedded content can carry its own metadata and hidden provenance.", "word/embeddings/*", "Embedded objects may contain source material, spreadsheets, PDFs, or separate metadata requiring inspection.", "A legitimate appendix, chart, or object insert can explain embedded content.", "Ask what the embedded object is and why it is included."));
+  }
+
+  if (customXmlParts.length) {
+    findings.push(makeFinding("rels-custom-xml", "Relationships and Embedded Objects", "notable", "Custom XML parts present", `The package contains ${customXmlParts.length} custom XML part${customXmlParts.length === 1 ? "" : "s"}.`, "Expected: institutional templates may include custom XML, but plain essays often do not.", "customXml/*", "Custom XML can indicate document-management metadata, data-bound placeholders, or templated generation.", "School templates, Word content controls, and SharePoint/OneDrive workflows can legitimately add custom XML.", "Ask whether the candidate used an official template or managed workflow."));
+  }
+
+  if (docPrValues.length) {
+    const suspicious = docPrValues.filter((value) => /http|generated|image|screenshot|stock|ai|openai|chatgpt/i.test(value));
+    if (suspicious.length) {
+      findings.push(makeFinding("rels-image-alt-text", "Relationships and Embedded Objects", "notable", "Image metadata or alt text looks source-like", `Drawing metadata includes value(s): ${suspicious.slice(0, 5).join(", ")}.`, "Expected: image names/alt text should usually describe the image; source-like or generated labels can preserve provenance clues.", "word/document.xml drawing properties", "Image metadata can reveal copied web/source context or automated insertion.", "Alt text may be generated by accessibility tools or inherited from legitimate image sources.", "Ask the candidate to explain the image source and how it was inserted."));
+    }
+  }
+
+  return findings;
 }
 
 function analyseStylometric(doc: ExtractedDocx): Finding[] {
@@ -602,6 +736,31 @@ function findCompoundSplit(token: string): [string, string] | null {
 
 function countOccurrences(text: string, phrase: string) {
   return text.match(new RegExp(`\\b${phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "g"))?.length ?? 0;
+}
+
+function findPartMatches(parts: Record<string, string>, pattern: RegExp) {
+  const matches: Array<{ part: string; value: string }> = [];
+  for (const [part, xml] of Object.entries(parts)) {
+    if (!part.startsWith("word/") || !part.endsWith(".xml")) {
+      continue;
+    }
+    for (const match of xml.matchAll(pattern)) {
+      matches.push({ part, value: match[1] ?? match[0] });
+    }
+  }
+  return matches;
+}
+
+function extractAttributeValues(parts: Record<string, string>, pattern: RegExp) {
+  const values: string[] = [];
+  for (const xml of Object.values(parts)) {
+    for (const match of xml.matchAll(pattern)) {
+      if (match[1]) {
+        values.push(decodeXml(match[1]));
+      }
+    }
+  }
+  return values;
 }
 
 function ngramJaccard(left: string, right: string, size: number) {

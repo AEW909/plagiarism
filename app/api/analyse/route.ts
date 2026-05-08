@@ -23,6 +23,9 @@ export async function POST(request: Request) {
       aiReview: {
         enabled: Boolean(process.env.OPENAI_API_KEY),
         status: process.env.OPENAI_API_KEY ? "pending" : "not_configured",
+        evidenceOpinion: process.env.OPENAI_API_KEY
+          ? "AI plagiarism/authorship evidence review is still running."
+          : "AI plagiarism/authorship evidence review is not configured.",
         opinion: process.env.OPENAI_API_KEY
           ? "Deterministic evidence is ready. AI interpretation is still running."
           : "AI analysis is not configured. Add OPENAI_API_KEY to enable the interpretive review layer.",

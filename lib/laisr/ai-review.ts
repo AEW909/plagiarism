@@ -11,6 +11,7 @@ export async function runAiReview(
     return {
       enabled: false,
       status: "not_configured",
+      evidenceOpinion: "AI plagiarism/authorship evidence review is not configured.",
       opinion: "AI analysis is not configured. Add OPENAI_API_KEY to enable the interpretive review layer.",
       counterArgument: "The algorithmic review remains available without AI analysis.",
       assessment: "No AI opinion was generated for this report.",
@@ -20,6 +21,31 @@ export async function runAiReview(
 
   try {
     const client = new OpenAI();
+    const evidenceResponse = await client.responses.create({
+      model: process.env.OPENAI_MODEL || "gpt-5",
+      input: [
+        {
+          role: "developer",
+          content:
+            "You are giving an academic integrity evidence opinion. Assess the text itself for possible plagiarism, AI assistance, patchwriting, or authorship inconsistency. Use cautious language and do not accuse."
+        },
+        {
+          role: "user",
+          content: JSON.stringify({
+            task:
+              "Give the kind of concise opinion you would give if an examiner pasted this work into an AI system and asked whether it shows indicators of plagiarism or AI involvement. Return JSON only with key evidenceOpinion. Mention textual features, limitations, and whether the opinion supports or weakens further investigation.",
+            textPreview: doc.text.slice(0, 9000)
+          })
+        }
+      ],
+      text: {
+        format: {
+          type: "json_object"
+        }
+      }
+    });
+    const evidenceParsed = JSON.parse(evidenceResponse.output_text || "{}") as Partial<AiReview>;
+
     const response = await client.responses.create({
       model: process.env.OPENAI_MODEL || "gpt-5",
       input: [
@@ -57,6 +83,7 @@ export async function runAiReview(
     return {
       enabled: true,
       status: "completed",
+      evidenceOpinion: evidenceParsed.evidenceOpinion || "AI evidence review completed but did not return an evidence opinion.",
       opinion: parsed.opinion || "AI review completed but did not return an opinion.",
       counterArgument: parsed.counterArgument || "No AI counter-argument was returned.",
       assessment: parsed.assessment || "No AI assessment was returned.",
@@ -66,6 +93,7 @@ export async function runAiReview(
     return {
       enabled: true,
       status: "failed",
+      evidenceOpinion: "AI evidence review failed while the algorithmic review completed.",
       opinion: "AI analysis failed while the algorithmic review completed.",
       counterArgument: "Do not treat absence of AI output as evidence either way.",
       assessment: error instanceof Error ? error.message : "Unknown AI review error.",

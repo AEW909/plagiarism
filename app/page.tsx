@@ -14,7 +14,7 @@ import {
   Upload,
   Users
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import type { LaisrReport, Severity } from "@/lib/laisr/types";
 
 type ReportTab = "evidence" | "interpretation" | "counter" | "judgement";
@@ -34,17 +34,6 @@ export default function Home() {
     aiConfigured: boolean;
     model: string;
   } | null>(null);
-
-  const groupedFindings = useMemo(() => {
-    return (report?.findings ?? []).reduce<Record<string, LaisrReport["findings"]>>(
-      (groups, finding) => {
-        groups[finding.category] = groups[finding.category] ?? [];
-        groups[finding.category].push(finding);
-        return groups;
-      },
-      {}
-    );
-  }, [report]);
 
   useEffect(() => {
     let active = true;
@@ -135,6 +124,7 @@ export default function Home() {
               aiReview: {
                 enabled: true,
                 status: "failed",
+                evidenceOpinion: "AI evidence review failed while deterministic review remained available.",
                 opinion: "AI analysis failed while deterministic review remained available.",
                 counterArgument: "Do not treat absence of AI output as evidence either way.",
                 assessment: aiError instanceof Error ? aiError.message : "AI analysis failed.",
@@ -329,7 +319,7 @@ export default function Home() {
 
             <div className="tab-panel">
               {activeTab === "evidence" ? (
-                <EvidenceTab groupedFindings={groupedFindings} report={report} />
+                <EvidenceTab report={report} />
               ) : null}
               {activeTab === "interpretation" ? <InterpretationTab report={report} /> : null}
               {activeTab === "counter" ? <CounterArgumentTab report={report} /> : null}
@@ -391,10 +381,8 @@ function SummaryItem({ label, value }: { label: string; value: string }) {
 }
 
 function EvidenceTab({
-  groupedFindings,
   report
 }: {
-  groupedFindings: Record<string, LaisrReport["findings"]>;
   report: LaisrReport;
 }) {
   return (
@@ -426,41 +414,24 @@ function EvidenceTab({
                     <SummaryItem label="Application" value={report.metadata.application} />
                   </div>
                 ) : null}
+                {check.id === "ai" ? (
+                  <div className="ai-copy">
+                    <p>{report.aiReview.evidenceOpinion}</p>
+                  </div>
+                ) : null}
                 {check.findingIds.length > 0 ? (
-                  <ul className="linked-findings">
+                  <div className="finding-list">
                     {check.findingIds.map((findingId) => {
                       const finding = report.findings.find((item) => item.id === findingId);
-                      return finding ? <li key={finding.id}>{finding.title}</li> : null;
+                      return finding ? <FindingCard key={finding.id} finding={finding} /> : null;
                     })}
-                  </ul>
+                  </div>
                 ) : null}
               </div>
             </details>
           ))}
         </div>
       </article>
-
-      {Object.entries(groupedFindings).length > 0 ? (
-        Object.entries(groupedFindings).map(([category, findings]) => (
-          <article className="panel" key={category}>
-            <h2>{category}</h2>
-            <div className="finding-list">
-              {findings.map((finding) => (
-                <FindingCard key={finding.id} finding={finding} />
-              ))}
-            </div>
-          </article>
-        ))
-      ) : (
-        <article className="panel">
-          <h2>No indicators detected</h2>
-          <p className="muted">
-            The current checks did not surface notable indicators in this document.
-            This does not prove authorship; it simply means these review signals did
-            not trigger.
-          </p>
-        </article>
-      )}
     </div>
   );
 }
@@ -523,6 +494,8 @@ function JudgementTab({
   const vivaRecommended =
     report.summary.recommendation === "Viva recommended" ||
     report.summary.recommendation === "Strong viva recommended";
+  const judgementBody =
+    report.aiReview.status === "completed" ? report.aiReview.assessment : report.assessment;
 
   return (
     <div className="reasoning-stack">
@@ -549,9 +522,13 @@ function JudgementTab({
       </section>
 
       <ReasoningBlock
-        body={report.assessment}
+        body={judgementBody}
         icon={<CheckCircle2 size={18} />}
-        title="Final judgement"
+        title={
+          report.aiReview.status === "completed"
+            ? "Final AI-assisted judgement"
+            : "Final judgement"
+        }
       />
 
       <section className="panel">
