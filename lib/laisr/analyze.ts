@@ -216,7 +216,7 @@ const CHECK_DEFINITIONS = [
     label: "Word XML forensics",
     category: "XML Forensics",
     clearDetail:
-      "Checked RSID distribution, hidden or white text, browser-origin font markers, tracked-formatting signals, and font diversity."
+      "Checked edit-session IDs, pasted-session clues, hidden or white text, browser-origin font markers, tracked-formatting signals, and font diversity."
   },
   {
     id: "textual",
@@ -351,9 +351,101 @@ function analyseXml(doc: ExtractedDocx): Finding[] {
     findings.push(makeFinding("xml-rsid", "XML Forensics", "notable", "Unusually varied edit-session identifiers", `The DOCX XML contains ${uniqueRsids.size} unique rsidR values across ${paragraphs.length || 1} paragraphs.`, "Expected: no fixed universal norm; this check flags >80 unique RSIDs under 8,000 words, and >150 unique RSIDs unconditionally.", "word/document.xml", "High RSID variety can be consistent with content assembled across multiple edit sessions or sources.", "Normal Word autosave, collaborative editing, and long editing histories can also increase RSID variety.", "Ask the candidate to explain how the document evolved and whether they can show drafts or version history."));
   }
 
+  if (wordCount >= 1200 && uniqueRsids.size > 0 && uniqueRsids.size <= 3) {
+    findings.push(makeFinding("xml-low-rsid-diversity", "XML Forensics", "notable", "Very low edit-session diversity", `The document contains about ${wordCount} words but only ${uniqueRsids.size} unique rsidR edit-session value${uniqueRsids.size === 1 ? "" : "s"}.`, "Expected: longer essays often show a varied pattern of edit-session IDs as text is drafted, saved, revised, and reorganised. Very low diversity can happen when text is pasted into a fresh document or passed through a plain-text workflow.", "word/document.xml", "This can support a washed-text or single-block assembly hypothesis when paired with low editing time, uniform timestamps, or weak drafting evidence.", "A student could genuinely draft in one sitting, use an editor that rewrites RSIDs, or paste from their own legitimate notes into a clean final file.", "Ask whether the candidate drafted elsewhere first, used a plain-text editor, or copied from earlier notes into the final document."));
+  }
+
+  const paragraphRsidProfile = paragraphs.map((paragraphXml, index) => {
+    const text = extractTextFromXml(paragraphXml);
+    const paragraphRsids = [...paragraphXml.matchAll(/w:rsidR="([^"]+)"/g)].map((match) => match[1]);
+    const uniqueParagraphRsids = [...new Set(paragraphRsids)];
+
+    return {
+      index,
+      text,
+      wordCount: tokenize(text).length,
+      primaryRsid: uniqueParagraphRsids.length === 1 ? uniqueParagraphRsids[0] : null,
+      rsidCount: uniqueParagraphRsids.length
+    };
+  });
+
+  const bulkRuns: Array<{ rsid: string; start: number; end: number; words: number; sample: string }> = [];
+  let currentRun: { rsid: string; start: number; end: number; words: number; sample: string } | null = null;
+
+  for (const paragraph of paragraphRsidProfile) {
+    if (!paragraph.primaryRsid || paragraph.wordCount < 25) {
+      if (currentRun) {
+        bulkRuns.push(currentRun);
+        currentRun = null;
+      }
+      continue;
+    }
+
+    if (currentRun !== null && currentRun.rsid === paragraph.primaryRsid) {
+      currentRun.end = paragraph.index;
+      currentRun.words += paragraph.wordCount;
+    } else {
+      if (currentRun) {
+        bulkRuns.push(currentRun);
+      }
+      currentRun = {
+        rsid: paragraph.primaryRsid,
+        start: paragraph.index,
+        end: paragraph.index,
+        words: paragraph.wordCount,
+        sample: paragraph.text
+      };
+    }
+  }
+
+  if (currentRun) {
+    bulkRuns.push(currentRun);
+  }
+
+  const bulkPasteCandidates = bulkRuns.filter((run) => run.end > run.start && run.words >= 300);
+  if (bulkPasteCandidates.length > 0) {
+    const examples = bulkPasteCandidates
+      .slice(0, 3)
+      .map((run) => `paragraphs ${run.start + 1}-${run.end + 1}, about ${run.words} words, RSID ${run.rsid}: "${clip(run.sample, 90)}"`)
+      .join("; ");
+
+    findings.push(makeFinding("xml-bulk-rsid-block", "XML Forensics", "notable", "Large block shares one edit-session ID", `${bulkPasteCandidates.length} multi-paragraph block${bulkPasteCandidates.length === 1 ? "" : "s"} share a single edit-session ID across at least 300 words. Examples: ${examples}.`, "Expected: naturally drafted essays often show edit-session IDs mixed across sections as text is typed, revised, and saved. Large consecutive blocks with one ID can be a clue that text arrived all at once.", "word/document.xml", "This can support a bulk-paste or document-assembly hypothesis, especially if the block also differs in style, language, or formatting.", "A legitimate paste from the student's own draft, notes, or another word processor can create the same pattern.", "Ask the candidate to explain how that section was drafted and whether it was copied from another file, note set, or editor."));
+  }
+
   const rsidRoot = doc.settingsXml.match(/<w:rsidRoot[^>]*w:val="([^"]+)"/)?.[1];
   if (rsidRoot) {
     findings.push(makeFinding("xml-rsid-root", "XML Forensics", "info", "RSID root recorded", `The document settings contain rsidRoot "${rsidRoot}".`, "Expected: rsidRoot is most useful for comparison across suspiciously similar documents, where shared roots can indicate common origin.", "word/settings.xml", "This value can support future cross-document comparison if class-set review is added.", "Within a single document it is not a concern on its own.", "If other submissions are suspicious, compare their rsidRoot and distinctive RSID patterns."));
+  }
+
+  const settingsRsids = new Set(
+    [...doc.settingsXml.matchAll(/<w:rsid\b[^>]*w:val="([^"]+)"/g)].map((match) => match[1])
+  );
+  const missingRsidParagraphs = paragraphs
+    .map((paragraphXml, index) => {
+      const paragraphRsids = [
+        ...new Set([...paragraphXml.matchAll(/w:rsid[A-Za-z0-9]*="([^"]+)"/g)].map((match) => match[1]))
+      ];
+      const missing = paragraphRsids.filter((rsid) => !settingsRsids.has(rsid));
+      return missing.length
+        ? {
+            index,
+            missing,
+            text: extractTextFromXml(paragraphXml)
+          }
+        : null;
+    })
+    .filter((item): item is { index: number; missing: string[]; text: string } => Boolean(item));
+
+  if (settingsRsids.size > 0 && missingRsidParagraphs.length > 0) {
+    const missingValues = [
+      ...new Set(missingRsidParagraphs.flatMap((paragraph) => paragraph.missing))
+    ];
+    const examples = missingRsidParagraphs
+      .slice(0, 3)
+      .map((paragraph) => `paragraph ${paragraph.index + 1}: "${clip(paragraph.text, 90)}"`)
+      .join("; ");
+
+    findings.push(makeFinding("xml-rsid-missing-from-settings", "XML Forensics", "notable", "Text uses edit IDs missing from the document's session table", `${missingRsidParagraphs.length} paragraph${missingRsidParagraphs.length === 1 ? "" : "s"} contain edit-session IDs that appear in the document body but not in Word's overall RSID table. Missing value examples: ${missingValues.slice(0, 8).join(", ")}. Text examples: ${examples}.`, "Expected: when text is written and edited normally in the same Word document, its edit-session IDs usually appear in the document's settings table. IDs missing from that table can be a clue that the text was pasted or imported from somewhere else.", "word/document.xml compared with word/settings.xml", "This can support a copy-paste or document-assembly hypothesis, especially if the affected paragraphs also have formatting, language, or style changes.", "Some legitimate conversions, template workflows, recovery saves, or editor differences can also create RSID mismatches.", "Ask the candidate to explain the affected paragraph and whether it was pasted from notes, another draft, a web editor, or a converted file."));
   }
 
   if (/<w:removePersonalInformation\b/.test(doc.settingsXml) || /<w:removeDateAndTime\b/.test(doc.settingsXml)) {
@@ -378,6 +470,15 @@ function analyseXml(doc: ExtractedDocx): Finding[] {
   const languageValues = extractAttributeValues(doc.parts, /<w:lang\b[^>]*w:val="([^"]+)"/g);
   if (new Set(languageValues).size > 3) {
     findings.push(makeFinding("xml-language-shifts", "XML Forensics", "notable", "Multiple document language settings", `Detected ${new Set(languageValues).size} distinct w:lang values: ${Array.from(new Set(languageValues)).slice(0, 8).join(", ")}.`, "Expected: multilingual references are normal, but many abrupt locale clusters can support a copied/assembled-source hypothesis.", "word/*.xml", "Language/locale shifts can indicate pasted content from different sources or spell-check environments.", "Normal quotes, references, foreign-language terms, or school templates can create language variation.", "Ask about drafting environment and any copied quoted material."));
+  }
+
+  const browserResidues = findBrowserResidues(doc.parts);
+  if (browserResidues.length) {
+    const examples = browserResidues
+      .slice(0, 5)
+      .map((hit) => `${hit.value} in ${hit.part}`)
+      .join("; ");
+    findings.push(makeFinding("xml-browser-residue-wide", "XML Forensics", "critical", "Browser-origin formatting residue detected", `Found browser/CSS formatting residue in the DOCX XML, including ${examples}.`, "Expected: a normal Word-authored essay should not usually contain CSS/browser font names such as -webkit-standard, -apple-system, BlinkMacSystemFont, or similar web-rendering markers.", "DOCX XML parts", "These markers can indicate that content or styling came through a browser-based editor, web page, AI chat interface, or HTML conversion before reaching Word.", "Google Docs, Word Online, learning platforms, accessibility tools, or legitimate copied notes can also leave browser-style residue.", "Ask the candidate whether any section was copied from a web page, browser editor, AI chat window, or online document editor."));
   }
 
   paragraphs.forEach((paragraphXml, paragraphIndex) => {
@@ -673,6 +774,24 @@ function buildVivaQuestions(findings: Finding[], subject: string): VivaQuestion[
     }
   ];
 
+  const rsidProcessFindings = findings.filter((finding) =>
+    [
+      "xml-low-rsid-diversity",
+      "xml-bulk-rsid-block",
+      "xml-rsid-missing-from-settings",
+      "xml-rsid"
+    ].includes(finding.id)
+  );
+  if (rsidProcessFindings.length > 0) {
+    questions.push({
+      question:
+        "Can you talk me through exactly how this document was drafted: where you wrote the first version, whether you copied sections from notes or another file, and whether you used Word, Google Docs, a plain-text editor, or another tool?",
+      rationale:
+        "The DOCX edit-session pattern raises a process question. This does not prove misconduct, but it is a useful way to check whether the candidate's account of drafting fits the file evidence.",
+      linkedFinding: rsidProcessFindings[0].id
+    });
+  }
+
   for (const finding of findings.slice(0, 8)) {
     questions.push({
       question: finding.vivaAngle,
@@ -787,6 +906,29 @@ function extractAttributeValues(parts: Record<string, string>, pattern: RegExp) 
     }
   }
   return values;
+}
+
+function findBrowserResidues(parts: Record<string, string>) {
+  const pattern = /(?:-webkit-[\w-]+|webkit[\w-]*|-apple-system|BlinkMacSystemFont|Apple Color Emoji|Segoe UI Emoji)/gi;
+  const hits: Array<{ part: string; value: string }> = [];
+  const seen = new Set<string>();
+
+  for (const [part, xml] of Object.entries(parts)) {
+    if (!part.endsWith(".xml")) {
+      continue;
+    }
+
+    for (const match of xml.matchAll(pattern)) {
+      const value = decodeXml(match[0]);
+      const key = `${part}:${value.toLowerCase()}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        hits.push({ part, value });
+      }
+    }
+  }
+
+  return hits;
 }
 
 function ngramJaccard(left: string, right: string, size: number) {

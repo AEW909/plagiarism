@@ -167,6 +167,8 @@ Support multiple file upload for a whole class set:
 - sortable signal ranking
 - cohort outlier detection
 - similarity between submissions
+- RSID genealogy analysis, including shared `rsidRoot` values that may indicate submissions cloned from the same parent document or template
+- cross-document RSID/session-pattern comparison to distinguish common school templates from unusual shared provenance
 - optional teacher-provided context
 
 Teacher ranking or expectation data must be handled carefully as context, not evidence.
