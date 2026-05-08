@@ -14,11 +14,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "A .docx file is required." }, { status: 400 });
     }
 
+    const authenticatedFile = formData.get("authenticatedFile");
     const candidateId = String(formData.get("candidateId") || "");
     const subject = String(formData.get("subject") || "");
     const doc = await extractDocx(file);
+    const authenticatedDoc = authenticatedFile instanceof File && authenticatedFile.size > 0
+      ? await extractDocx(authenticatedFile)
+      : null;
     const baseReport = buildReport({
       doc,
+      authenticatedDoc,
       candidateId,
       subject,
       aiReview: {
@@ -32,7 +37,7 @@ export async function POST(request: Request) {
       }
     });
     const aiReview = await runAiReview(doc, baseReport.findings, baseReport.summary.recommendation);
-    const report = buildReport({ doc, candidateId, subject, aiReview });
+    const report = buildReport({ doc, authenticatedDoc, candidateId, subject, aiReview });
 
     return NextResponse.json(report);
   } catch (error) {

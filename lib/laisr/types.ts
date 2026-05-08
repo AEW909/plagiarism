@@ -67,16 +67,41 @@ export type LinguisticSegment = {
   index: number;
   wordCount: number;
   fkGrade: number;
+  fogIndex: number;
+  typeTokenRatio: number;
   formalDensity: number;
+  passiveDensity: number;
   complexityBand: "low" | "normal" | "high";
   registerBand: "normal" | "high";
+  passiveBand: "normal" | "high";
   opening: string;
 };
 
 export type LinguisticProfile = {
   meanFkGrade: number;
+  meanFogIndex: number;
   meanFormalDensity: number;
+  meanPassiveDensity: number;
+  consistencyScore: number;
+  consistencyLabel: string;
   segments: LinguisticSegment[];
+};
+
+export type ComparativeMetric = {
+  label: string;
+  submitted: number;
+  authenticated: number;
+  difference: number;
+  severity: "clear" | "notable" | "critical";
+};
+
+export type ComparativeProfile = {
+  available: boolean;
+  sampleFileName?: string;
+  score: number;
+  label: string;
+  metrics: ComparativeMetric[];
+  summary: string;
 };
 
 export type VivaQuestion = {
@@ -95,6 +120,7 @@ export type LaisrReport = {
   assessment: string;
   vivaQuestions: VivaQuestion[];
   linguisticProfile: LinguisticProfile;
+  comparativeProfile: ComparativeProfile;
   aiReview: AiReview;
   extractedTextPreview: string;
 };

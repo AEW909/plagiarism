@@ -21,6 +21,7 @@ type ReportTab = "evidence" | "interpretation" | "counter" | "judgement";
 
 export default function Home() {
   const [file, setFile] = useState<File | null>(null);
+  const [authenticatedFile, setAuthenticatedFile] = useState<File | null>(null);
   const [candidateId, setCandidateId] = useState("");
   const [subject, setSubject] = useState("");
   const [report, setReport] = useState<LaisrReport | null>(null);
@@ -30,6 +31,7 @@ export default function Home() {
   const [pdfLoading, setPdfLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<ReportTab>("evidence");
   const [includeVivaInPdf, setIncludeVivaInPdf] = useState(true);
+  const [analysisStage, setAnalysisStage] = useState<"idle" | "deterministic" | "ai" | "complete">("idle");
   const [aiConfig, setAiConfig] = useState<{
     aiConfigured: boolean;
     model: string;
@@ -63,11 +65,15 @@ export default function Home() {
     }
 
     setLoading(true);
+    setAnalysisStage("deterministic");
     setError("");
     setReport(null);
 
     const formData = new FormData();
     formData.append("file", file);
+    if (authenticatedFile) {
+      formData.append("authenticatedFile", authenticatedFile);
+    }
     formData.append("candidateId", candidateId);
     formData.append("subject", subject);
 
@@ -88,9 +94,12 @@ export default function Home() {
 
       if (aiConfig?.aiConfigured !== false) {
         await enrichWithAi(file, candidateId, subject);
+      } else {
+        setAnalysisStage("complete");
       }
     } catch (analysisError) {
       setError(analysisError instanceof Error ? analysisError.message : "Analysis failed.");
+      setAnalysisStage("idle");
     } finally {
       setLoading(false);
     }
@@ -98,9 +107,13 @@ export default function Home() {
 
   async function enrichWithAi(selectedFile: File, selectedCandidateId: string, selectedSubject: string) {
     setAiLoading(true);
+    setAnalysisStage("ai");
 
     const formData = new FormData();
     formData.append("file", selectedFile);
+    if (authenticatedFile) {
+      formData.append("authenticatedFile", authenticatedFile);
+    }
     formData.append("candidateId", selectedCandidateId);
     formData.append("subject", selectedSubject);
 
@@ -116,6 +129,7 @@ export default function Home() {
       }
 
       setReport(payload);
+      setAnalysisStage("complete");
     } catch (aiError) {
       setReport((currentReport) =>
         currentReport
@@ -143,6 +157,7 @@ export default function Home() {
             }
           : currentReport
       );
+      setAnalysisStage("complete");
     } finally {
       setAiLoading(false);
     }
@@ -220,16 +235,28 @@ export default function Home() {
       </section>
 
       <section className="upload-workspace">
-        <label className="upload-zone">
-          <Upload size={30} />
-          <strong>{file ? file.name : "Choose DOCX submission"}</strong>
-          <span>Document text and XML are analysed in this session.</span>
-          <input
-            type="file"
-            accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            onChange={(event) => setFile(event.target.files?.[0] ?? null)}
-          />
-        </label>
+        <div className="upload-stack">
+          <label className="upload-zone">
+            <Upload size={30} />
+            <strong>{file ? file.name : "Choose DOCX submission"}</strong>
+            <span>Document text and XML are analysed in this session.</span>
+            <input
+              type="file"
+              accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+              onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+            />
+          </label>
+          <label className="upload-zone compact">
+            <FileText size={24} />
+            <strong>{authenticatedFile ? authenticatedFile.name : "Optional authenticated sample"}</strong>
+            <span>Known student writing enables a style comparison.</span>
+            <input
+              type="file"
+              accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+              onChange={(event) => setAuthenticatedFile(event.target.files?.[0] ?? null)}
+            />
+          </label>
+        </div>
 
         <div className="details-panel">
           <label>
@@ -258,6 +285,7 @@ export default function Home() {
               AI is weighing the evidence before final judgement
             </div>
           ) : null}
+          {analysisStage !== "idle" ? <ProgressRail stage={analysisStage} hasAuthenticatedSample={Boolean(authenticatedFile)} /> : null}
           {error ? <p className="error-text">{error}</p> : null}
         </div>
       </section>
@@ -287,6 +315,7 @@ export default function Home() {
             <SummaryItem label="Candidate" value={report.summary.candidateId} />
             <SummaryItem label="Words" value={String(report.summary.wordCount)} />
             <SummaryItem label="Paragraphs" value={String(report.summary.paragraphCount)} />
+            <SummaryItem label="Consistency" value={`${report.linguisticProfile.consistencyScore}/100`} />
           </div>
 
           <section className="tab-shell">
@@ -380,6 +409,54 @@ function SummaryItem({ label, value }: { label: string; value: string }) {
   );
 }
 
+function ProgressRail({
+  hasAuthenticatedSample,
+  stage
+}: {
+  hasAuthenticatedSample: boolean;
+  stage: "idle" | "deterministic" | "ai" | "complete";
+}) {
+  const steps = [
+    "Load DOCX",
+    "Metadata",
+    "XML",
+    "Text",
+    "Style",
+    "Linguistic",
+    ...(hasAuthenticatedSample ? ["Compare sample"] : []),
+    "AI review",
+    "Judgement"
+  ];
+  const activeIndex =
+    stage === "deterministic"
+      ? hasAuthenticatedSample ? 6 : 5
+      : stage === "ai"
+        ? steps.length - 2
+        : stage === "complete"
+          ? steps.length - 1
+          : 0;
+
+  return (
+    <div className="progress-rail">
+      {steps.map((step, index) => (
+        <div
+          className={
+            index < activeIndex || stage === "complete"
+              ? "progress-step done"
+              : index === activeIndex
+                ? "progress-step active"
+                : "progress-step"
+          }
+          key={step}
+        >
+          <span>{index < activeIndex || stage === "complete" ? <CheckCircle2 size={13} /> : index + 1}</span>
+          <small>{step}</small>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function EvidenceTab({
   report
 }: {
@@ -420,6 +497,7 @@ function EvidenceTab({
                   </div>
                 ) : null}
                 {check.id === "linguistic" ? <LinguisticMap report={report} /> : null}
+                {check.id === "comparative" ? <ComparativePanel report={report} /> : null}
                 {check.findingIds.length > 0 ? (
                   <div className="finding-list">
                     {check.findingIds.map((findingId) => {
@@ -698,15 +776,15 @@ function LinguisticMap({ report }: { report: LaisrReport }) {
   return (
     <div className="linguistic-map">
       <div className="map-head">
-        <span>Complexity and formal-register map</span>
-        <small>Each block is roughly one 150-word section</small>
+        <span>Complexity, formal-register, and passive-voice map</span>
+        <small>{report.linguisticProfile.consistencyScore}/100 - {report.linguisticProfile.consistencyLabel}</small>
       </div>
       <div className="segment-grid">
         {segments.map((segment) => (
           <div
-            className={`segment-cell complexity-${segment.complexityBand} register-${segment.registerBand}`}
+            className={`segment-cell complexity-${segment.complexityBand} register-${segment.registerBand} passive-${segment.passiveBand}`}
             key={segment.index}
-            title={`Segment ${segment.index + 1}: FK grade ${segment.fkGrade.toFixed(1)}, formal density ${segment.formalDensity.toFixed(1)} per 100 words`}
+            title={`Segment ${segment.index + 1}: FK grade ${segment.fkGrade.toFixed(1)}, Fog ${segment.fogIndex.toFixed(1)}, formal density ${segment.formalDensity.toFixed(1)} per 100 words, passive density ${segment.passiveDensity.toFixed(1)} per sentence`}
           >
             {segment.index + 1}
           </div>
@@ -717,6 +795,41 @@ function LinguisticMap({ report }: { report: LaisrReport }) {
         <span><i className="legend normal" />Typical range</span>
         <span><i className="legend high" />Higher complexity</span>
         <span><i className="legend register" />Formal wording spike</span>
+        <span><i className="legend passive" />Passive voice spike</span>
+      </div>
+    </div>
+  );
+}
+
+function ComparativePanel({ report }: { report: LaisrReport }) {
+  const profile = report.comparativeProfile;
+
+  if (!profile.available) {
+    return (
+      <div className="compare-panel empty">
+        <strong>No authenticated sample supplied</strong>
+        <p>Upload a known piece of the candidate's writing to compare style, sentence length, vocabulary range, and register against the submitted document.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="compare-panel">
+      <div className="compare-score">
+        <strong>{profile.score}/100</strong>
+        <span>{profile.label}</span>
+        <small>Compared with {profile.sampleFileName}</small>
+      </div>
+      <div className="compare-bars">
+        {profile.metrics.map((metric) => (
+          <div className={`compare-metric ${metric.severity}`} key={metric.label}>
+            <div>
+              <strong>{metric.label}</strong>
+              <span>Submitted {metric.submitted.toFixed(2)} / Sample {metric.authenticated.toFixed(2)}</span>
+            </div>
+            <i style={{ width: `${Math.min(100, Math.max(4, metric.difference * 12))}%` }} />
+          </div>
+        ))}
       </div>
     </div>
   );

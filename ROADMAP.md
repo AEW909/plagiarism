@@ -133,6 +133,8 @@ Compare:
 
 This supports fairer authorship review because it compares the submission with the candidate's own known writing.
 
+Initial implementation now supports one optional authenticated `.docx` sample and compares readability, sentence length, vocabulary range, formal/informal register, transition density, and sentence-opening patterns. Future work should support a library of authenticated samples and show change over time.
+
 ### 5. Review And Recommendations
 
 Provide a dashboard and report with outcome bands:
@@ -210,7 +212,7 @@ Likely storage buckets:
 3. Add the review dashboard.
 4. Add AI-assisted interpretation and viva questions.
 5. Add PDF export.
-6. Add authenticated work comparison.
+6. Add authenticated work comparison. **Initial single-sample version complete.**
 7. Add Supabase persistence.
 8. Add class-set analysis.
 

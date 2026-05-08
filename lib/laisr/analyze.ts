@@ -3,6 +3,7 @@ import type { EvidenceCheck, Finding, LaisrReport, VivaQuestion } from "./types"
 
 type ReportInput = {
   doc: ExtractedDocx;
+  authenticatedDoc?: ExtractedDocx | null;
   candidateId: string;
   subject: string;
   aiReview: LaisrReport["aiReview"];
@@ -82,18 +83,32 @@ const TRANSITIONS = [
   "conversely",
   "on the other hand",
   "in contrast",
+  "that said",
+  "by contrast",
+  "on the contrary",
+  "yet",
   "furthermore",
   "moreover",
   "in addition",
   "additionally",
+  "equally",
+  "in the same vein",
+  "also",
+  "besides",
   "therefore",
   "consequently",
   "thus",
   "hence",
   "as a result",
+  "accordingly",
+  "it follows that",
+  "this suggests that",
+  "for this reason",
   "although",
   "despite",
   "notwithstanding",
+  "even though",
+  "while it is true",
   "importantly",
   "notably",
   "significantly",
@@ -103,7 +118,8 @@ const TRANSITIONS = [
   "in conclusion",
   "in summary",
   "overall",
-  "taken together"
+  "taken together",
+  "to summarise"
 ];
 
 const FORMAL_ACADEMIC = [
@@ -125,7 +141,76 @@ const FORMAL_ACADEMIC = [
   "notwithstanding",
   "constitutes",
   "pertaining",
-  "whilst"
+  "whilst",
+  "utilization",
+  "inasmuch",
+  "insofar",
+  "whereby",
+  "wherein",
+  "therein",
+  "underpins",
+  "underpin"
+];
+
+const INFORMAL_COLLOQUIAL = [
+  "basically",
+  "kind of",
+  "sort of",
+  "pretty much",
+  "a lot of",
+  "loads of",
+  "stuff",
+  "things",
+  "really",
+  "very very",
+  "super",
+  "totally",
+  "get",
+  "got",
+  "big",
+  "way too",
+  "so much",
+  "big deal",
+  "a bit",
+  "quite a",
+  "you know",
+  "i mean",
+  "like really",
+  "honestly"
+];
+
+const KNOWN_MERGED_COMPOUNDS = [
+  "laboratorybased",
+  "highquality",
+  "lowerlevel",
+  "higherlevel",
+  "largescale",
+  "smallscale",
+  "longtail",
+  "shortterm",
+  "longterm",
+  "wellknown",
+  "evidencebased",
+  "schoolbased",
+  "homebased",
+  "workbased",
+  "internetbased",
+  "computerbased",
+  "populationbased",
+  "communitybased",
+  "riskbased",
+  "timeconsuming",
+  "lifelong",
+  "worldwide",
+  "healthcare",
+  "wellbeing",
+  "wellestablished",
+  "wideranging",
+  "farreaching",
+  "hardwired",
+  "deeprooted",
+  "longstanding",
+  "widescale"
 ];
 
 const COMMON_WORDS = new Set([
@@ -150,17 +235,49 @@ const COMMON_WORDS = new Set([
   "source",
   "student",
   "written",
-  "writing"
+  "writing",
+  "well",
+  "known",
+  "small",
+  "higher",
+  "evidence",
+  "school",
+  "home",
+  "internet",
+  "computer",
+  "population",
+  "community",
+  "risk",
+  "time",
+  "consuming",
+  "life",
+  "world",
+  "wide",
+  "health",
+  "care",
+  "being",
+  "established",
+  "range",
+  "ranging",
+  "far",
+  "reaching",
+  "hard",
+  "wired",
+  "deep",
+  "rooted",
+  "standing"
 ]);
 
 export function buildReport(input: ReportInput): LaisrReport {
   const linguisticProfile = buildLinguisticProfile(input.doc);
+  const comparativeProfile = buildComparativeProfile(input.doc, input.authenticatedDoc ?? null);
   const findings = [
     ...analyseMetadata(input.doc),
     ...analyseXml(input.doc),
     ...analyseTextual(input.doc),
     ...analyseStylometric(input.doc),
-    ...analyseLinguistic(linguisticProfile)
+    ...analyseLinguistic(linguisticProfile),
+    ...analyseComparative(comparativeProfile)
   ];
   const seriousCount = findings.filter((finding) => finding.severity === "critical" || finding.severity === "serious").length;
   const notableCount = findings.filter((finding) => finding.severity === "notable").length;
@@ -191,6 +308,7 @@ export function buildReport(input: ReportInput): LaisrReport {
       ? [...vivaQuestions, ...input.aiReview.vivaQuestions]
       : [],
     linguisticProfile,
+    comparativeProfile,
     aiReview: input.aiReview,
     extractedTextPreview: input.doc.text.slice(0, 1400)
   };
@@ -245,6 +363,13 @@ const CHECK_DEFINITIONS = [
     category: "Relationships and Embedded Objects",
     clearDetail:
       "Checked relationship files, external targets, hyperlinks, embedded packages/objects, media references, and custom XML relationships."
+  },
+  {
+    id: "comparative",
+    label: "Authenticated writing comparison",
+    category: "Authenticated Writing Comparison",
+    clearDetail:
+      "No authenticated writing sample was supplied, so LAISR could not compare this submission with known writing by the same candidate."
   },
   {
     id: "ai",
@@ -550,7 +675,42 @@ function analyseTextual(doc: ExtractedDocx): Finding[] {
     findings.push(makeFinding("text-studies-is", "Textual Anomalies", "notable", "Subject-verb disagreement", "The phrase \"the studies is\" appears in the document.", "Text body", "Basic grammatical inconsistency can be a copy/edit artefact when surrounded by otherwise polished prose.", "Students can make ordinary grammar mistakes, especially after rearranging sentences.", "Ask the candidate to explain the surrounding sentence in their own words."));
   }
 
-  for (const known of ["laboratorybased", "highquality", "lowerlevel", "largescale", "longtail", "shortterm", "longterm"]) {
+  const grammarPatterns: Array<{ id: string; pattern: RegExp; title: string; explanation: string }> = [
+    {
+      id: "despite-of",
+      pattern: /\bdespite of\b/i,
+      title: "Non-standard phrase: despite of",
+      explanation: "The phrase \"despite of\" is non-standard in formal English."
+    },
+    {
+      id: "modal-of",
+      pattern: /\b(?:could|would|should) of\b/i,
+      title: "Non-standard modal phrase",
+      explanation: "The document contains a phrase such as \"could of\", \"would of\", or \"should of\"."
+    },
+    {
+      id: "may-possibly",
+      pattern: /\bmay possibly\b/i,
+      title: "Redundant modal phrase",
+      explanation: "The phrase \"may possibly\" appears, which can be a filler-like or over-paraphrased construction."
+    },
+    {
+      id: "very-unique",
+      pattern: /\bvery unique\b/i,
+      title: "Non-standard intensifier",
+      explanation: "The phrase \"very unique\" appears, which can signal awkward automated or over-edited prose."
+    }
+  ];
+
+  for (const grammar of grammarPatterns) {
+    const match = doc.text.match(grammar.pattern);
+    if (match) {
+      const index = match.index ?? 0;
+      findings.push(makeFinding(`text-grammar-${grammar.id}`, "Textual Anomalies", "notable", grammar.title, `${grammar.explanation} Surrounding sentence: "${clip(sentenceAround(doc.text, index), 220)}".`, "Text body", "Small grammar artefacts matter most when they sit inside otherwise polished prose or cluster with other evidence.", "A candidate can make ordinary grammar mistakes, especially when editing quickly.", "Ask the candidate to explain the sentence and how it changed during editing."));
+    }
+  }
+
+  for (const known of KNOWN_MERGED_COMPOUNDS) {
     if (lowered.includes(known)) {
       findings.push(makeFinding(`text-merge-${known}`, "Textual Anomalies", "notable", `Merged compound word: ${known}`, `The token "${known}" appears without the expected space or hyphen.`, "Text body", "Merged compound words can occur when text is copied from a PDF or transformed by an automated tool.", "They can also be simple typing or formatting mistakes.", "Ask the candidate where this term came from and how it was edited."));
     }
@@ -654,6 +814,10 @@ function analyseStylometric(doc: ExtractedDocx): Finding[] {
 function analyseLinguistic(profile: LaisrReport["linguisticProfile"]): Finding[] {
   const findings: Finding[] = [];
 
+  if (profile.consistencyScore < 65) {
+    findings.push(makeFinding("ling-consistency-score", "Linguistic Consistency", profile.consistencyScore < 40 ? "serious" : "notable", "Low writing consistency score", `The document-level consistency score is ${profile.consistencyScore}/100 (${profile.consistencyLabel}). This score combines unusual complexity shifts, formal-register spikes, and passive-voice spikes across document sections.`, "Expected: 85-100 consistent; 65-84 minor inconsistencies; 40-64 moderate inconsistencies; 0-39 severe inconsistencies.", "Whole document", "A low score means several sections differ from the document's own baseline and deserve examiner attention.", "A long essay can naturally vary between narrative, technical, and evaluative sections.", "Ask the candidate which sections were hardest to write and how the style changed between drafts."));
+  }
+
   profile.segments.forEach((metric) => {
     if (metric.complexityBand !== "normal") {
       const direction = metric.complexityBand === "high" ? "more complex" : "simpler";
@@ -662,6 +826,10 @@ function analyseLinguistic(profile: LaisrReport["linguisticProfile"]): Finding[]
 
     if (metric.registerBand === "high") {
       findings.push(makeFinding(`ling-register-${metric.index}`, "Linguistic Consistency", "notable", `Formal register spike in segment ${metric.index + 1}`, `This section uses formal academic wording more densely than the rest of the document. Formal-word density: ${metric.formalDensity.toFixed(1)} per 100 words; document average: ${profile.meanFormalDensity.toFixed(1)}. Opening: "${clip(metric.opening, 180)}".`, "Expected: formal wording should usually rise and fall gradually with the topic; this check flags sections that stand out from the document's own pattern.", `Segment ${metric.index + 1}`, "A local spike can suggest pasted, heavily edited, or AI-assisted prose if it is not explained by the subject matter.", "A source-heavy or carefully revised paragraph may legitimately become more formal.", "Ask the candidate to explain the terms in this section and how the wording developed."));
+    }
+
+    if (metric.passiveBand === "high") {
+      findings.push(makeFinding(`ling-passive-${metric.index}`, "Linguistic Consistency", "notable", `Passive-voice spike in segment ${metric.index + 1}`, `This section uses passive constructions more heavily than the rest of the document. Passive density: ${metric.passiveDensity.toFixed(1)} per sentence; document average: ${profile.meanPassiveDensity.toFixed(1)}. Opening: "${clip(metric.opening, 180)}".`, "Expected: passive voice can be normal in academic writing, but a sudden local spike can mark a different drafting source or register.", `Segment ${metric.index + 1}`, "A passive-voice spike can suggest imported academic prose or heavy rewriting if it appears suddenly.", "Scientific method sections and source summaries often use passive voice legitimately.", "Ask the candidate to rewrite the key claim actively and explain why the passive wording was used."));
     }
   });
 
@@ -674,21 +842,41 @@ function buildLinguisticProfile(doc: ExtractedDocx): LaisrReport["linguisticProf
     text: segment,
     wordCount: tokenize(segment).length,
     fk: estimateGrade(segment),
-    formalDensity: density(segment, FORMAL_ACADEMIC)
+    fog: estimateFog(segment),
+    ttr: typeTokenRatio(segment),
+    formalDensity: density(segment, FORMAL_ACADEMIC),
+    passiveDensity: passiveDensity(segment)
   }));
   const meanGrade = mean(metrics.map((metric) => metric.fk));
   const sdGrade = sd(metrics.map((metric) => metric.fk), meanGrade);
+  const meanFog = mean(metrics.map((metric) => metric.fog));
   const meanFormal = mean(metrics.map((metric) => metric.formalDensity));
   const sdFormal = sd(metrics.map((metric) => metric.formalDensity), meanFormal);
+  const meanPassive = mean(metrics.map((metric) => metric.passiveDensity));
+  const sdPassive = sd(metrics.map((metric) => metric.passiveDensity), meanPassive);
+  const flags = metrics.reduce((sum, metric) => {
+    const complexityFlag = sdGrade > 0 && Math.abs(metric.fk - meanGrade) > sdGrade * 1.8;
+    const registerFlag = sdFormal > 0 && metric.formalDensity > meanFormal + sdFormal * 2;
+    const passiveFlag = sdPassive > 0 && metric.passiveDensity > meanPassive + sdPassive * 2;
+    return sum + (complexityFlag ? 5 : 0) + (registerFlag ? 8 : 0) + (passiveFlag ? 6 : 0);
+  }, 0);
+  const consistencyScore = Math.max(0, 100 - flags);
 
   return {
     meanFkGrade: meanGrade,
+    meanFogIndex: meanFog,
     meanFormalDensity: meanFormal,
+    meanPassiveDensity: meanPassive,
+    consistencyScore,
+    consistencyLabel: consistencyLabel(consistencyScore),
     segments: metrics.map((metric, index) => ({
       index,
       wordCount: metric.wordCount,
       fkGrade: metric.fk,
+      fogIndex: metric.fog,
+      typeTokenRatio: metric.ttr,
       formalDensity: metric.formalDensity,
+      passiveDensity: metric.passiveDensity,
       complexityBand:
         sdGrade > 0 && metric.fk > meanGrade + sdGrade * 1.8
           ? "high"
@@ -697,9 +885,74 @@ function buildLinguisticProfile(doc: ExtractedDocx): LaisrReport["linguisticProf
             : "normal",
       registerBand:
         sdFormal > 0 && metric.formalDensity > meanFormal + sdFormal * 2 ? "high" : "normal",
+      passiveBand:
+        sdPassive > 0 && metric.passiveDensity > meanPassive + sdPassive * 2 ? "high" : "normal",
       opening: clip(metric.text, 220)
     }))
   };
+}
+
+function buildComparativeProfile(doc: ExtractedDocx, authenticatedDoc: ExtractedDocx | null): LaisrReport["comparativeProfile"] {
+  if (!authenticatedDoc) {
+    return {
+      available: false,
+      score: 0,
+      label: "No authenticated sample supplied",
+      metrics: [],
+      summary:
+        "No authenticated writing sample was supplied, so LAISR could not compare this submission against known writing by the same candidate."
+    };
+  }
+
+  const submitted = writingSignature(doc.text);
+  const authenticated = writingSignature(authenticatedDoc.text);
+  const metrics = [
+    compareMetric("FK grade", submitted.fkGrade, authenticated.fkGrade, 2, 4),
+    compareMetric("Fog index", submitted.fogIndex, authenticated.fogIndex, 2.5, 5),
+    compareMetric("Average sentence length", submitted.avgSentenceLength, authenticated.avgSentenceLength, 4, 8),
+    compareMetric("Average word length", submitted.avgWordLength, authenticated.avgWordLength, 0.35, 0.7),
+    compareMetric("Type-token ratio", submitted.typeTokenRatio, authenticated.typeTokenRatio, 0.08, 0.15),
+    compareMetric("Formal wording density", submitted.formalDensity, authenticated.formalDensity, 2.5, 5),
+    compareMetric("Informal wording density", submitted.informalDensity, authenticated.informalDensity, 2, 4),
+    compareMetric("Transition density", submitted.transitionDensity, authenticated.transitionDensity, 4, 8),
+    compareMetric("Sentence opener pattern", submitted.openerPercent, authenticated.openerPercent, 8, 16)
+  ];
+  const penalty = metrics.reduce((sum, metric) => sum + (metric.severity === "critical" ? 16 : metric.severity === "notable" ? 8 : 0), 0);
+  const score = Math.max(0, 100 - penalty);
+  const label =
+    score >= 80
+      ? "Stylistically consistent with supplied sample"
+      : score >= 60
+        ? "Moderate divergence from supplied sample"
+        : "Significant divergence from supplied sample";
+
+  return {
+    available: true,
+    sampleFileName: authenticatedDoc.fileName,
+    score,
+    label,
+    metrics,
+    summary: `Compared with "${authenticatedDoc.fileName}", the submitted document scored ${score}/100 for stylistic similarity. ${metrics.filter((metric) => metric.severity !== "clear").length} metric${metrics.filter((metric) => metric.severity !== "clear").length === 1 ? "" : "s"} showed notable or critical divergence.`
+  };
+}
+
+function analyseComparative(profile: LaisrReport["comparativeProfile"]): Finding[] {
+  if (!profile.available) {
+    return [];
+  }
+
+  const findings: Finding[] = [];
+  const divergent = profile.metrics.filter((metric) => metric.severity !== "clear");
+
+  if (profile.score < 80 || divergent.length > 0) {
+    findings.push(makeFinding("compare-overall", "Authenticated Writing Comparison", profile.score < 60 ? "serious" : "notable", "Submitted style differs from authenticated sample", `${profile.summary} Largest differences: ${divergent.slice(0, 4).map((metric) => `${metric.label} difference ${metric.difference.toFixed(2)}`).join("; ") || "none above threshold"}.`, "Expected: a score of 80-100 suggests broad consistency; 60-79 suggests moderate divergence; below 60 suggests significant divergence needing context.", "Submitted document vs authenticated sample", "A style mismatch is one of the strongest fair-use signals because it compares the candidate with their own known writing rather than with a generic norm.", "Writing style can legitimately change by topic, time pressure, drafting help, genre, or improvement over time.", "Ask the candidate to compare this essay with their earlier sample and explain any differences in style, vocabulary, and structure."));
+  }
+
+  for (const metric of divergent.slice(0, 6)) {
+    findings.push(makeFinding(`compare-${slug(metric.label)}`, "Authenticated Writing Comparison", metric.severity === "critical" ? "serious" : "notable", `${metric.label} differs from authenticated sample`, `Submitted value: ${metric.submitted.toFixed(2)}. Authenticated sample: ${metric.authenticated.toFixed(2)}. Difference: ${metric.difference.toFixed(2)}.`, "Expected: this comparison uses conservative thresholds from the prototype: notable divergence at the lower threshold and serious divergence at the higher threshold.", "Submitted document vs authenticated sample", "A single metric is not decisive, but clusters of differences can indicate a different writing process, source, or level of assistance.", "The candidate may have written in a different genre, received normal teaching feedback, or developed between samples.", `Ask why the ${metric.label.toLowerCase()} differs from the earlier writing sample and invite the candidate to explain their drafting choices.`));
+  }
+
+  return findings;
 }
 
 function makeFinding(id: string, category: string, severity: Finding["severity"], title: string, evidence: string, normalRangeOrLocation: string, locationOrInterpretation: string, interpretationOrCounterArgument: string, counterArgumentOrVivaAngle: string, vivaAngle?: string): Finding {
@@ -983,6 +1236,82 @@ function estimateGrade(text: string) {
   return 0.39 * (words.length / sentences.length) + 11.8 * (syllables / words.length) - 15.59;
 }
 
+function estimateFog(text: string) {
+  const words = tokenize(text);
+  const sentences = splitSentences(text);
+  if (words.length === 0 || sentences.length === 0) {
+    return 0;
+  }
+  const complexWords = words.filter((word) => countSyllables(word) >= 3).length;
+  return 0.4 * (words.length / sentences.length + (complexWords / words.length) * 100);
+}
+
+function typeTokenRatio(text: string) {
+  const words = tokenize(text);
+  return words.length ? new Set(words).size / words.length : 0;
+}
+
+function passiveDensity(text: string) {
+  const sentences = splitSentences(text);
+  if (sentences.length === 0) {
+    return 0;
+  }
+
+  const passiveHits = sentences.filter((sentence) =>
+    /\b(?:is|are|was|were|be|been|being)\s+\w+(?:ed|en)\b(?:\s+\w+){0,3}\s+by\b/i.test(sentence) ||
+    /\b(?:is|are|was|were|be|been|being)\s+\w+(?:ed|en)\b/i.test(sentence)
+  ).length;
+
+  return passiveHits / sentences.length;
+}
+
+function writingSignature(text: string) {
+  const words = tokenize(text);
+  const sentences = splitSentences(text);
+  const lowered = text.toLowerCase();
+  const transitionCount = TRANSITIONS.reduce((sum, phrase) => sum + countOccurrences(lowered, phrase), 0);
+  const openerCount = sentences.filter((sentence) => /^(this|these)\s+\w+|^such\s+\w+|^it is\s+\w+|^there (is|are)\b/i.test(sentence)).length;
+
+  return {
+    fkGrade: estimateGrade(text),
+    fogIndex: estimateFog(text),
+    avgSentenceLength: sentences.length ? words.length / sentences.length : 0,
+    avgWordLength: words.length ? words.reduce((sum, word) => sum + word.length, 0) / words.length : 0,
+    typeTokenRatio: typeTokenRatio(text),
+    formalDensity: density(text, FORMAL_ACADEMIC),
+    informalDensity: density(text, INFORMAL_COLLOQUIAL),
+    transitionDensity: words.length ? (transitionCount / words.length) * 1000 : 0,
+    openerPercent: sentences.length ? (openerCount / sentences.length) * 100 : 0
+  };
+}
+
+function compareMetric(label: string, submitted: number, authenticated: number, notableThreshold: number, criticalThreshold: number) {
+  const difference = Math.abs(submitted - authenticated);
+  return {
+    label,
+    submitted,
+    authenticated,
+    difference,
+    severity: difference >= criticalThreshold ? "critical" as const : difference >= notableThreshold ? "notable" as const : "clear" as const
+  };
+}
+
+function consistencyLabel(score: number) {
+  if (score >= 85) {
+    return "Consistent";
+  }
+
+  if (score >= 65) {
+    return "Minor inconsistencies";
+  }
+
+  if (score >= 40) {
+    return "Moderate inconsistencies";
+  }
+
+  return "Severe inconsistencies";
+}
+
 function countSyllables(word: string) {
   const matches = word.toLowerCase().replace(/e$/, "").match(/[aeiouy]+/g);
   return Math.max(1, matches?.length ?? 1);
@@ -993,6 +1322,10 @@ function density(text: string, terms: string[]) {
   const lowered = text.toLowerCase();
   const hits = terms.reduce((sum, term) => sum + countOccurrences(lowered, term), 0);
   return (hits / wordCount) * 100;
+}
+
+function slug(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 }
 
 function mean(values: number[]) {
