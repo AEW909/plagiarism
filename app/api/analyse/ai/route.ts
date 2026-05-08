@@ -29,6 +29,7 @@ export async function POST(request: Request) {
       aiReview: {
         enabled: Boolean(process.env.OPENAI_API_KEY),
         status: process.env.OPENAI_API_KEY ? "pending" : "not_configured",
+        evidenceConcern: "not_run",
         evidenceOpinion: "",
         opinion: "",
         counterArgument: "",

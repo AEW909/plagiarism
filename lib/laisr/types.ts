@@ -56,6 +56,7 @@ export type AnalysisSummary = {
 export type AiReview = {
   enabled: boolean;
   status: "not_configured" | "pending" | "completed" | "failed";
+  evidenceConcern: "not_run" | "none" | "low" | "moderate" | "high" | "unavailable";
   evidenceOpinion: string;
   opinion: string;
   counterArgument: string;

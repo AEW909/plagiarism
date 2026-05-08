@@ -28,6 +28,7 @@ export async function POST(request: Request) {
       aiReview: {
         enabled: Boolean(process.env.OPENAI_API_KEY),
         status: process.env.OPENAI_API_KEY ? "pending" : "not_configured",
+        evidenceConcern: "not_run",
         evidenceOpinion: process.env.OPENAI_API_KEY
           ? "AI plagiarism/authorship evidence review is still running."
           : "AI plagiarism/authorship evidence review is not configured.",

@@ -138,6 +138,7 @@ export default function Home() {
               aiReview: {
                 enabled: true,
                 status: "failed",
+                evidenceConcern: "unavailable",
                 evidenceOpinion: "AI evidence review failed while deterministic review remained available.",
                 opinion: "AI analysis failed while deterministic review remained available.",
                 counterArgument: "Do not treat absence of AI output as evidence either way.",

@@ -11,6 +11,7 @@ export async function runAiReview(
     return {
       enabled: false,
       status: "not_configured",
+      evidenceConcern: "not_run",
       evidenceOpinion: "AI plagiarism/authorship evidence review is not configured.",
       opinion: "AI analysis is not configured. Add OPENAI_API_KEY to enable the interpretive review layer.",
       counterArgument: "The algorithmic review remains available without AI analysis.",
@@ -33,7 +34,7 @@ export async function runAiReview(
           role: "user",
           content: JSON.stringify({
             task:
-              "Give the kind of concise opinion you would give if an examiner pasted this work and its DOCX forensic findings into an AI system and asked whether it shows indicators of plagiarism or AI involvement. Return JSON only with key evidenceOpinion. Mention textual features, XML/file-structure clues in plain language, limitations, and whether the opinion supports or weakens further investigation.",
+              "Give the kind of concise opinion you would give if an examiner pasted this work and its DOCX forensic findings into an AI system and asked whether it shows indicators of plagiarism or AI involvement. Return JSON only with keys evidenceConcern and evidenceOpinion. evidenceConcern must be one of: none, low, moderate, high. Mention textual features, XML/file-structure clues in plain language, limitations, and whether the opinion supports or weakens further investigation.",
             textPreview: doc.text.slice(0, 9000),
             findings: findings.map((finding) => ({
               category: finding.category,
@@ -91,6 +92,7 @@ export async function runAiReview(
     return {
       enabled: true,
       status: "completed",
+      evidenceConcern: normaliseEvidenceConcern(evidenceParsed.evidenceConcern, evidenceParsed.evidenceOpinion),
       evidenceOpinion: evidenceParsed.evidenceOpinion || "AI evidence review completed but did not return an evidence opinion.",
       opinion: parsed.opinion || "AI review completed but did not return an opinion.",
       counterArgument: parsed.counterArgument || "No AI counter-argument was returned.",
@@ -101,6 +103,7 @@ export async function runAiReview(
     return {
       enabled: true,
       status: "failed",
+      evidenceConcern: "unavailable",
       evidenceOpinion: "AI evidence review failed while the algorithmic review completed.",
       opinion: "AI analysis failed while the algorithmic review completed.",
       counterArgument: "Do not treat absence of AI output as evidence either way.",
@@ -108,4 +111,34 @@ export async function runAiReview(
       vivaQuestions: []
     };
   }
+}
+
+function normaliseEvidenceConcern(value: unknown, evidenceOpinion?: string) {
+  if (value === "none" || value === "low" || value === "moderate" || value === "high") {
+    return value;
+  }
+
+  return inferConcernFromText(evidenceOpinion || "");
+}
+
+function inferConcernFromText(text: string): AiReview["evidenceConcern"] {
+  const lowered = text.toLowerCase();
+
+  if (/\b(no|not|does not|doesn't)\b.{0,60}\b(indicator|evidence|sign|support|suggest)/.test(lowered)) {
+    return "none";
+  }
+
+  if (/\b(strong|substantial|significant|clear|multiple|clustered)\b.{0,80}\b(ai|plagiarism|patchwriting|copied|authorship|further investigation|viva)/.test(lowered)) {
+    return "high";
+  }
+
+  if (/\b(moderate|some|several|possible|plausible|supports|suggests|indicators?)\b.{0,80}\b(ai|plagiarism|patchwriting|copied|authorship|further investigation|viva)/.test(lowered)) {
+    return "moderate";
+  }
+
+  if (/\b(low|limited|weak|minor)\b.{0,80}\b(indicator|concern|evidence|support)/.test(lowered)) {
+    return "low";
+  }
+
+  return "low";
 }

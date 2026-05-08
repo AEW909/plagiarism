@@ -383,7 +383,10 @@ const CHECK_DEFINITIONS = [
 function buildEvidenceChecks(findings: Finding[], aiReview: LaisrReport["aiReview"]): EvidenceCheck[] {
   return CHECK_DEFINITIONS.map((definition) => {
     if (definition.id === "ai") {
-      const aiIssue = aiReview.status === "failed";
+      const aiIssue =
+        aiReview.status === "failed" ||
+        aiReview.evidenceConcern === "moderate" ||
+        aiReview.evidenceConcern === "high";
       return {
         id: definition.id,
         label: definition.label,
@@ -391,7 +394,9 @@ function buildEvidenceChecks(findings: Finding[], aiReview: LaisrReport["aiRevie
         status: aiIssue ? "issues" : "clear",
         summary:
           aiReview.status === "completed"
-            ? "AI evidence opinion completed"
+            ? aiIssue
+              ? `AI reported ${aiReview.evidenceConcern} concern`
+              : `AI reported ${aiReview.evidenceConcern === "none" ? "no" : "low"} concern`
             : aiReview.status === "failed"
               ? "AI review failed"
               : aiReview.status === "pending"
@@ -399,7 +404,7 @@ function buildEvidenceChecks(findings: Finding[], aiReview: LaisrReport["aiRevie
               : "AI review not configured",
         detail:
           aiReview.status === "completed"
-            ? "The AI evidence layer reviewed the text directly for plagiarism, AI-assistance, patchwriting, or authorship-inconsistency indicators. Interpretation, counter-argument, and final weighing are handled in later report stages."
+            ? `The AI evidence layer reviewed the text directly for plagiarism, AI-assistance, patchwriting, or authorship-inconsistency indicators and returned a "${aiReview.evidenceConcern}" concern level. Interpretation, counter-argument, and final weighing are handled in later report stages.`
             : aiReview.status === "failed"
               ? aiReview.assessment
               : aiReview.status === "pending"
