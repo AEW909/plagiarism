@@ -921,7 +921,7 @@ function ComparativePanel({ report }: { report: LaisrReport }) {
     return (
       <div className="compare-panel empty">
         <strong>No authenticated sample supplied</strong>
-        <p>Upload a known piece of the candidate's writing to compare style, sentence length, vocabulary range, and register against the submitted document.</p>
+        <p>Upload a known piece of the candidate&apos;s writing to compare style, sentence length, vocabulary range, and register against the submitted document.</p>
       </div>
     );
   }
