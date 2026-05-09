@@ -557,6 +557,202 @@ input:focus {
   gap: 12px;
 }
 
+.panel-heading-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.panel-heading-row h2 {
+  margin: 0;
+}
+
+.segmented-control {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 3px;
+  background: var(--surface-strong);
+}
+
+.segmented-control button {
+  min-height: 32px;
+  border: 0;
+  border-radius: 6px;
+  padding: 0 11px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 900;
+}
+
+.segmented-control button.active {
+  background: var(--surface);
+  color: var(--accent-strong);
+  box-shadow: 0 4px 12px rgba(32, 35, 31, 0.08);
+}
+
+.annotation-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 0.42fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.document-reader {
+  display: grid;
+  max-height: 72vh;
+  overflow: auto;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px;
+  background: #fff;
+  scroll-behavior: smooth;
+}
+
+.reader-paragraph {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.reader-paragraph:target {
+  border-color: rgba(49, 95, 140, 0.45);
+  background: rgba(49, 95, 140, 0.08);
+}
+
+.reader-paragraph.annotated {
+  border-color: rgba(182, 123, 24, 0.28);
+  background: rgba(182, 123, 24, 0.05);
+}
+
+.paragraph-index {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--surface-strong);
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.reader-paragraph p {
+  margin: 0;
+  color: var(--ink);
+  line-height: 1.68;
+}
+
+.paragraph-markers {
+  display: flex;
+  flex-wrap: wrap;
+  grid-column: 2;
+  gap: 6px;
+}
+
+.marker {
+  border-radius: 999px;
+  padding: 4px 7px;
+  background: rgba(49, 95, 140, 0.1);
+  color: var(--blue);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.marker.notable {
+  background: rgba(182, 123, 24, 0.12);
+  color: var(--gold);
+}
+
+.marker.serious,
+.marker.critical {
+  background: rgba(185, 74, 72, 0.12);
+  color: var(--red);
+}
+
+.annotation-panel {
+  display: grid;
+  max-height: 72vh;
+  overflow: auto;
+  gap: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--surface-strong);
+  scroll-behavior: smooth;
+}
+
+.annotation-group {
+  display: grid;
+  gap: 8px;
+}
+
+.annotation-group h3 {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  text-transform: uppercase;
+}
+
+.annotation-card {
+  display: grid;
+  gap: 8px;
+  border-left: 4px solid var(--blue);
+  border-radius: 8px;
+  padding: 10px;
+  background: #fff;
+}
+
+.annotation-card:target {
+  outline: 2px solid rgba(49, 95, 140, 0.32);
+}
+
+.annotation-card.notable {
+  border-left-color: var(--gold);
+}
+
+.annotation-card.serious,
+.annotation-card.critical {
+  border-left-color: var(--red);
+}
+
+.annotation-card div {
+  display: grid;
+  gap: 3px;
+}
+
+.annotation-card span,
+.annotation-card small {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.annotation-card strong {
+  line-height: 1.35;
+}
+
+.annotation-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.annotation-card a {
+  color: var(--accent-strong);
+  font-size: 0.82rem;
+  font-weight: 900;
+  text-decoration: none;
+}
+
 .checklist {
   display: grid;
   gap: 8px;
@@ -1025,9 +1221,45 @@ input:focus {
   line-height: 1.5;
 }
 
+.finding .specific-summary {
+  color: var(--ink);
+  font-weight: 800;
+}
+
+.finding .specific-summary strong {
+  color: var(--accent-strong);
+}
+
 .finding .plain-summary {
   color: var(--muted);
   font-weight: 700;
+}
+
+.finding .plain-summary strong {
+  color: var(--ink);
+}
+
+.technical-evidence {
+  border: 1px solid rgba(32, 35, 31, 0.08);
+  border-radius: 8px;
+  margin: 10px 0;
+  background: rgba(255, 255, 255, 0.42);
+}
+
+.technical-evidence summary {
+  padding: 8px 10px;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.technical-evidence p {
+  border-top: 1px solid rgba(32, 35, 31, 0.08);
+  margin: 0;
+  padding: 10px;
+  color: var(--muted);
 }
 
 .finding dl {
@@ -1104,8 +1336,14 @@ input:focus {
   }
 
   .progress-rail,
-  .compare-panel {
+  .compare-panel,
+  .annotation-layout {
     grid-template-columns: 1fr;
+  }
+
+  .document-reader,
+  .annotation-panel {
+    max-height: none;
   }
 
   .app-header {

@@ -310,7 +310,7 @@ export function buildReport(input: ReportInput): LaisrReport {
     linguisticProfile,
     comparativeProfile,
     aiReview: input.aiReview,
-    extractedTextPreview: input.doc.text.slice(0, 1400)
+    extractedTextPreview: input.doc.text
   };
 }
 
