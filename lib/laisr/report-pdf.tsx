@@ -263,7 +263,7 @@ function LaisrPdf({
             ["App version", report.metadata.appVersion]
           ]}
         />
-        <Text style={styles.sectionBanner}>Text-only AI Evidence Opinion</Text>
+        <Text style={styles.sectionBanner}>Text-only AI Prose Opinion</Text>
         <Text style={styles.paragraph}>{report.aiReview.evidenceOpinion}</Text>
         {Object.entries(groupedFindings).map(([category, findings]) => (
           <View key={category}>

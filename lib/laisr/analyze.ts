@@ -294,7 +294,7 @@ export function buildReport(input: ReportInput): LaisrReport {
   const vivaQuestions = shouldRecommendViva(recommendation)
     ? buildVivaQuestions(findings, input.subject)
     : [];
-  const evidenceChecks = buildEvidenceChecks(findings, input.aiReview);
+  const evidenceChecks = buildEvidenceChecks(findings, input.aiReview, comparativeProfile);
 
   return {
     summary: {

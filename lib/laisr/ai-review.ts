@@ -28,13 +28,13 @@ export async function runAiReview(
         {
           role: "developer",
           content:
-            "You are giving a text-only academic integrity evidence opinion. Assess only the submitted writing for possible direct copying, close paraphrase, patchwriting, AI-assisted writing or rewriting, and authorship inconsistency. Do not use or infer from metadata, XML, stylometric metrics, file structure, or other forensic checks. Use cautious language and do not accuse."
+            "You are giving a text-only academic integrity opinion. You can see only the visible essay prose. Comment only on wording, argument, source-use signals, paraphrase/patchwriting signals, AI-like prose features, and authorship consistency visible in the prose itself. Use cautious language and do not accuse."
         },
         {
           role: "user",
           content: JSON.stringify({
             task:
-              "Give the kind of concise opinion you would give if an examiner pasted only the submitted writing into an AI system and asked whether the text itself shows indicators of academic malpractice. Consider direct copying, close paraphrase, source patchwriting, AI-assisted writing or rewriting, and authorship inconsistency. Return JSON only with keys evidenceConcern and evidenceOpinion. evidenceConcern must be one of: none, low, moderate, high. Mention specific textual features or passages where useful, but do not claim that a passage appears online unless a supplied source or explicit search result supports that claim. Do not discuss DOCX metadata, XML, RSIDs, formatting residue, stylometric metrics, or deterministic findings because they have not been provided to this text-only review.",
+              "An examiner has pasted only the visible essay text. Give a concise prose-only academic integrity opinion. Consider whether the writing itself raises concern about direct copying, close paraphrase, source patchwriting, AI-assisted writing or rewriting, or inconsistent authorship. Return JSON only with keys evidenceConcern and evidenceOpinion. evidenceConcern must be one of: none, low, moderate, high. Mention specific wording, reasoning, citation/source-use, repetition, or passage-level features where useful. Do not claim that a passage appears online unless a supplied source or explicit search result supports that claim. Do not refer to any file-forensic, formatting, hidden-document, editing-history, or non-visible evidence.",
             textPreview: doc.text.slice(0, 9000)
           })
         }
@@ -47,8 +47,9 @@ export async function runAiReview(
     });
     const evidenceParsed = JSON.parse(evidenceResponse.output_text || "{}") as Partial<AiReview>;
     const evidenceConcern = normaliseEvidenceConcern(evidenceParsed.evidenceConcern, evidenceParsed.evidenceOpinion);
-    const evidenceOpinion =
-      evidenceParsed.evidenceOpinion || "AI text review completed but did not return an evidence opinion.";
+    const evidenceOpinion = enforceTextOnlyOpinion(
+      evidenceParsed.evidenceOpinion || "AI text review completed but did not return an evidence opinion."
+    );
 
     try {
       const response = await client.responses.create({
@@ -131,6 +132,25 @@ function normaliseEvidenceConcern(value: unknown, evidenceOpinion?: string) {
   }
 
   return inferConcernFromText(evidenceOpinion || "");
+}
+
+function enforceTextOnlyOpinion(opinion: string) {
+  const forbiddenPattern =
+    /\b(?:docx|metadata|xml|rsid|rsids|edit-session|revision count|tracked changes|hidden text|white text|font|fonts|webkit|package|zip|relationship files?|embedded objects?|custom xml|file structure|document properties|formatting residue)\b/i;
+  if (!forbiddenPattern.test(opinion)) {
+    return opinion;
+  }
+
+  const proseOnlySentences = opinion
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => sentence.trim())
+    .filter((sentence) => sentence && !forbiddenPattern.test(sentence));
+
+  if (proseOnlySentences.length > 0) {
+    return `${proseOnlySentences.join(" ")} This Stage 1 review is limited to the visible prose only; file-forensic evidence is handled separately in the synthesis stage.`;
+  }
+
+  return "The text-only AI review returned comments outside its intended scope, so LAISR has withheld that wording. Treat the Stage 1 AI evidence stream as unavailable for this run and rely on the separate deterministic findings plus the synthesis stage.";
 }
 
 function inferConcernFromText(text: string): AiReview["evidenceConcern"] {

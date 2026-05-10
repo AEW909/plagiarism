@@ -59,14 +59,18 @@ const CHECK_DEFINITIONS = [
   },
   {
     id: "ai",
-    label: "AI Text Review",
-    category: "Text-only AI Evidence Opinion",
+    label: "Text-only AI prose review",
+    category: "Text-only AI Prose Opinion",
     clearDetail:
-      "Checked whether the optional text-only AI review completed a direct source-use, plagiarism, paraphrasing, authorship, and AI-writing opinion before the later evidence-synthesis and judgement stages."
+      "Checked whether the optional text-only AI review completed a prose-level source-use, plagiarism, paraphrasing, authorship, and AI-writing opinion before the later evidence-synthesis and judgement stages."
   }
 ] as const;
 
-export function buildEvidenceChecks(findings: Finding[], aiReview: LaisrReport["aiReview"]): EvidenceCheck[] {
+export function buildEvidenceChecks(
+  findings: Finding[],
+  aiReview: LaisrReport["aiReview"],
+  comparativeProfile: LaisrReport["comparativeProfile"]
+): EvidenceCheck[] {
   return CHECK_DEFINITIONS.map((definition) => {
     if (definition.id === "ai") {
       const aiIssue =
@@ -74,7 +78,7 @@ export function buildEvidenceChecks(findings: Finding[], aiReview: LaisrReport["
         aiReview.evidenceConcern === "moderate" ||
         aiReview.evidenceConcern === "high";
       const status =
-        aiReview.status === "pending"
+        aiReview.status === "pending" || (aiReview.enabled && aiReview.status !== "completed" && aiReview.status !== "not_configured")
           ? "pending"
           : aiReview.status === "not_configured"
             ? "not_run"
@@ -98,12 +102,24 @@ export function buildEvidenceChecks(findings: Finding[], aiReview: LaisrReport["
                 : "AI text review not configured",
         detail:
           aiReview.status === "completed"
-            ? `The AI text review assessed only the submitted writing for direct copying, close paraphrase, source patchwriting, AI assistance, and authorship-inconsistency indicators. It returned a "${aiReview.evidenceConcern}" concern level. Metadata, XML, stylometric, linguistic, and authenticated-writing evidence are considered later in the synthesis stage.`
+            ? `The AI text review assessed only the visible submitted prose for direct copying, close paraphrase, source patchwriting, AI assistance, and authorship-inconsistency indicators. It returned a "${aiReview.evidenceConcern}" concern level. File-forensic and algorithmic evidence are considered separately in the synthesis stage.`
             : aiReview.status === "failed"
               ? aiReview.assessment
               : aiReview.status === "pending"
                 ? "The deterministic checks have completed. The text-only AI review and later evidence synthesis are still running and will update this report when they return."
                 : "The deterministic checks completed, but no text-only AI review or AI synthesis was generated because OPENAI_API_KEY was not configured.",
+        findingIds: []
+      };
+    }
+
+    if (definition.id === "comparative" && !comparativeProfile.available) {
+      return {
+        id: definition.id,
+        label: definition.label,
+        category: definition.category,
+        status: "not_run",
+        summary: "No authenticated sample supplied",
+        detail: definition.clearDetail,
         findingIds: []
       };
     }
