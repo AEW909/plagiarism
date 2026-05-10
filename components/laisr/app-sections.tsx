@@ -1,0 +1,731 @@
+"use client";
+
+import {
+  AlertTriangle,
+  ArrowLeft,
+  Brain,
+  CheckCircle2,
+  Clock,
+  Download,
+  FileQuestion,
+  FileSearch,
+  Files,
+  FileText,
+  Loader2,
+  SearchCheck,
+  Upload,
+  Users
+} from "lucide-react";
+import { useState, type ReactNode } from "react";
+import {
+  aiStatus,
+  finalJudgementReady,
+  getFindingParagraphRange,
+  paragraphInRange,
+  plainFindingObservation,
+  plainFindingSummary,
+  severityLabel
+} from "@/lib/laisr/finding-presentation";
+import type { LaisrReport } from "@/lib/laisr/types";
+export function HomeOptions({ onSingleUpload }: { onSingleUpload: () => void }) {
+  return (
+    <section className="home-grid">
+      <button className="home-option active" type="button" onClick={onSingleUpload}>
+        <FileSearch size={24} />
+        <span>
+          <strong>Single file review</strong>
+          <small>Upload one DOCX submission, add an optional authenticated sample, and generate a tabbed evidence report.</small>
+        </span>
+      </button>
+      <button className="home-option disabled" type="button" disabled>
+        <Files size={24} />
+        <span>
+          <strong>Class set review</strong>
+          <small>Batch upload and compare a cohort systematically. Planned for a later build.</small>
+        </span>
+      </button>
+      <button className="home-option disabled" type="button" disabled>
+        <Clock size={24} />
+        <span>
+          <strong>Historical reports</strong>
+          <small>Saved submissions and report history when Supabase storage is added.</small>
+        </span>
+      </button>
+    </section>
+  );
+}
+
+export function SingleUploadScreen({
+  aiLoading,
+  analysisStage,
+  authenticatedFile,
+  candidateId,
+  error,
+  file,
+  loading,
+  subject,
+  onAnalyse,
+  onAuthenticatedFileChange,
+  onBack,
+  onCandidateIdChange,
+  onFileChange,
+  onSubjectChange
+}: {
+  aiLoading: boolean;
+  analysisStage: "idle" | "deterministic" | "ai" | "complete";
+  authenticatedFile: File | null;
+  candidateId: string;
+  error: string;
+  file: File | null;
+  loading: boolean;
+  subject: string;
+  onAnalyse: () => void;
+  onAuthenticatedFileChange: (file: File | null) => void;
+  onBack: () => void;
+  onCandidateIdChange: (value: string) => void;
+  onFileChange: (file: File | null) => void;
+  onSubjectChange: (value: string) => void;
+}) {
+  return (
+    <section className="workspace-card">
+      <div className="workspace-title">
+        <button className="icon-button" type="button" onClick={onBack} aria-label="Back to home">
+          <ArrowLeft size={18} />
+        </button>
+        <div>
+          <h1>Single file review</h1>
+          <p>Upload a DOCX submission and collect review signals before deciding whether a viva is warranted.</p>
+        </div>
+      </div>
+
+      <div className="upload-workspace">
+        <div className="upload-stack">
+          <label className="upload-zone">
+            <Upload size={30} />
+            <strong>{file ? file.name : "Choose DOCX submission"}</strong>
+            <span>Document text and XML are analysed in this session.</span>
+            <input
+              type="file"
+              accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+              onChange={(event) => onFileChange(event.target.files?.[0] ?? null)}
+            />
+          </label>
+          <label className="upload-zone compact">
+            <FileText size={24} />
+            <strong>{authenticatedFile ? authenticatedFile.name : "Optional authenticated sample"}</strong>
+            <span>Known student writing enables a style comparison.</span>
+            <input
+              type="file"
+              accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+              onChange={(event) => onAuthenticatedFileChange(event.target.files?.[0] ?? null)}
+            />
+          </label>
+        </div>
+
+        <div className="details-panel">
+          <label>
+            Candidate ID
+            <input
+              value={candidateId}
+              placeholder="Optional"
+              onChange={(event) => onCandidateIdChange(event.target.value)}
+            />
+          </label>
+          <label>
+            Subject or title
+            <input
+              value={subject}
+              placeholder="Optional"
+              onChange={(event) => onSubjectChange(event.target.value)}
+            />
+          </label>
+          <button className="primary-button" type="button" disabled={loading} onClick={onAnalyse}>
+            {loading ? <Loader2 className="spin" size={18} /> : <FileSearch size={18} />}
+            {loading ? "Checking evidence" : "Analyse document"}
+          </button>
+          {aiLoading ? (
+            <div className="analysis-progress">
+              <Loader2 className="spin" size={15} />
+              AI is reviewing source use, authorship, paraphrasing, plagiarism, and AI-writing indicators
+            </div>
+          ) : null}
+          {analysisStage !== "idle" ? <ProgressRail stage={analysisStage} hasAuthenticatedSample={Boolean(authenticatedFile)} /> : null}
+          {error ? <p className="error-text">{error}</p> : null}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+export function TabButton({
+  active,
+  icon,
+  label,
+  onClick
+}: {
+  active: boolean;
+  icon: ReactNode;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      aria-selected={active}
+      className={active ? "tab-button active" : "tab-button"}
+      role="tab"
+      type="button"
+      onClick={onClick}
+    >
+      {icon}
+      {label}
+    </button>
+  );
+}
+
+export function SummaryItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="summary-item">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+export function ProgressRail({
+  hasAuthenticatedSample,
+  stage
+}: {
+  hasAuthenticatedSample: boolean;
+  stage: "idle" | "deterministic" | "ai" | "complete";
+}) {
+  const steps = [
+    "Load DOCX",
+    "Metadata",
+    "XML",
+    "Text",
+    "Style",
+    "Linguistic",
+    ...(hasAuthenticatedSample ? ["Compare sample"] : []),
+    "Evidence synthesis",
+    "Judgement"
+  ];
+  const activeIndex =
+    stage === "deterministic"
+      ? hasAuthenticatedSample ? 6 : 5
+      : stage === "ai"
+        ? steps.length - 2
+        : stage === "complete"
+          ? steps.length - 1
+          : 0;
+
+  return (
+    <div className="progress-rail">
+      {steps.map((step, index) => (
+        <div
+          className={
+            index < activeIndex || stage === "complete"
+              ? "progress-step done"
+              : index === activeIndex
+                ? "progress-step active"
+                : "progress-step"
+          }
+          key={step}
+        >
+          <span>{index < activeIndex || stage === "complete" ? <CheckCircle2 size={13} /> : index + 1}</span>
+          <small>{step}</small>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function EvidenceTab({
+  report
+}: {
+  report: LaisrReport;
+}) {
+  const [mode, setMode] = useState<"checklist" | "reader">("reader");
+
+  return (
+    <div className="findings-stack">
+      <article className="panel evidence-overview">
+        <div className="panel-heading-row">
+          <h2>
+            <SearchCheck size={18} />
+            Evidence
+          </h2>
+          <div className="segmented-control" aria-label="Evidence view mode">
+            <button className={mode === "reader" ? "active" : ""} type="button" onClick={() => setMode("reader")}>
+              Document
+            </button>
+            <button className={mode === "checklist" ? "active" : ""} type="button" onClick={() => setMode("checklist")}>
+              Checklist
+            </button>
+          </div>
+        </div>
+        {mode === "reader" ? <DocumentAnnotationView report={report} /> : <EvidenceChecklist report={report} />}
+      </article>
+    </div>
+  );
+}
+
+export function EvidenceChecklist({ report }: { report: LaisrReport }) {
+  return (
+    <div className="checklist">
+          {report.evidenceChecks.map((check) => (
+            <details className="check-row" key={check.id}>
+          <summary>
+            <span>
+              <strong>{check.label}</strong>
+              <small>{check.summary}</small>
+            </span>
+            <mark className={`tag ${check.status}`}>
+              {check.status === "issues"
+                ? "Issues detected"
+                : check.status === "pending"
+                  ? "Pending"
+                  : check.status === "not_run"
+                    ? "Not run"
+                    : "Clear"}
+            </mark>
+          </summary>
+          <div className="check-detail">
+            <p>{check.detail}</p>
+            {check.id === "metadata" ? (
+              <div className="metadata-grid">
+                <SummaryItem label="Creator" value={report.metadata.creator} />
+                <SummaryItem label="Last editor" value={report.metadata.lastModifiedBy} />
+                <SummaryItem label="Revision" value={report.metadata.revision} />
+                <SummaryItem label="Application" value={report.metadata.application} />
+              </div>
+            ) : null}
+            {check.id === "ai" ? (
+              <div className="ai-copy">
+                <p>{report.aiReview.evidenceOpinion}</p>
+              </div>
+            ) : null}
+            {check.id === "linguistic" ? <LinguisticMap report={report} /> : null}
+            {check.id === "comparative" ? <ComparativePanel report={report} /> : null}
+            {check.findingIds.length > 0 ? (
+              <div className="finding-list">
+                {check.findingIds.map((findingId) => {
+                  const finding = report.findings.find((item) => item.id === findingId);
+                  return finding ? <FindingCard key={finding.id} finding={finding} /> : null;
+                })}
+              </div>
+            ) : null}
+          </div>
+        </details>
+      ))}
+    </div>
+  );
+}
+
+export function DocumentAnnotationView({ report }: { report: LaisrReport }) {
+  const paragraphs = report.extractedTextPreview
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean);
+  const paragraphAnnotations = report.findings.filter((finding) => getFindingParagraphRange(finding, paragraphs.length));
+  const fileAnnotations = report.findings.filter((finding) => !getFindingParagraphRange(finding, paragraphs.length));
+
+  return (
+    <div className="annotation-layout">
+      <div className="document-reader" aria-label="Extracted document text">
+        {paragraphs.length > 0 ? (
+          paragraphs.map((paragraph, index) => {
+            const annotations = paragraphAnnotations.filter((finding) => paragraphInRange(index + 1, getFindingParagraphRange(finding, paragraphs.length)));
+            return (
+              <section className={annotations.length ? "reader-paragraph annotated" : "reader-paragraph"} id={`paragraph-${index + 1}`} key={`${index}-${paragraph.slice(0, 20)}`}>
+                <div className="paragraph-index">{index + 1}</div>
+                <p>{paragraph}</p>
+                {annotations.length ? (
+                  <div className="paragraph-markers">
+                    {annotations.slice(0, 4).map((finding) => (
+                      <a className={`marker ${finding.severity}`} href={`#annotation-${finding.id}`} key={finding.id}>
+                        {severityLabel(finding.severity)}
+                      </a>
+                    ))}
+                  </div>
+                ) : null}
+              </section>
+            );
+          })
+        ) : (
+          <p className="muted">No extracted document text is available for this file.</p>
+        )}
+      </div>
+
+      <aside className="annotation-panel" aria-label="Evidence annotations">
+        <div className="annotation-group">
+          <h3>Linked to text</h3>
+          {paragraphAnnotations.length > 0 ? (
+            paragraphAnnotations.map((finding) => {
+              const range = getFindingParagraphRange(finding, paragraphs.length);
+              return (
+                <AnnotationCard finding={finding} href={range ? `#paragraph-${range.start}` : undefined} key={finding.id} />
+              );
+            })
+          ) : (
+            <p className="muted">No findings could be linked to a visible paragraph yet.</p>
+          )}
+        </div>
+        <div className="annotation-group">
+          <h3>File-level evidence</h3>
+          {fileAnnotations.length > 0 ? (
+            fileAnnotations.map((finding) => <AnnotationCard finding={finding} key={finding.id} />)
+          ) : (
+            <p className="muted">No file-level findings detected.</p>
+          )}
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+export function AnnotationCard({
+  finding,
+  href
+}: {
+  finding: LaisrReport["findings"][number];
+  href?: string;
+}) {
+  return (
+    <article className={`annotation-card ${finding.severity}`} id={`annotation-${finding.id}`}>
+      <div>
+        <span>{severityLabel(finding.severity)}</span>
+        <strong>{finding.title}</strong>
+      </div>
+      <p>{plainFindingObservation(finding)}</p>
+      {href ? <a href={href}>Show in document</a> : <small>File-level finding</small>}
+    </article>
+  );
+}
+
+export function InterpretationTab({ report }: { report: LaisrReport }) {
+  return (
+    <div className="reasoning-stack">
+      <ReasoningBlock
+        body={report.interpretation}
+        icon={<FileText size={18} />}
+        title="Interpretation of the evidence"
+      />
+      <section className="panel ai-panel">
+        <h2>
+          <Brain size={18} />
+          AI Evidence Synthesis
+        </h2>
+        <p className="status-pill">{aiStatus(report.aiReview.status)}</p>
+        <div className="ai-copy">
+          <p>{report.aiReview.opinion}</p>
+          <p>{report.aiReview.assessment}</p>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+export function CounterArgumentTab({ report }: { report: LaisrReport }) {
+  return (
+    <div className="reasoning-stack">
+      <ReasoningBlock
+        body={report.counterArgument}
+        icon={<Users size={18} />}
+        title="Plausible innocent explanations"
+      />
+      <ReasoningBlock
+        body={report.aiReview.counterArgument}
+        icon={<Brain size={18} />}
+        title="AI synthesis counter-position"
+      />
+    </div>
+  );
+}
+
+export function JudgementTab({
+  includeVivaInPdf,
+  onDownloadJson,
+  onDownloadPdf,
+  onToggleViva,
+  pdfLoading,
+  report
+}: {
+  includeVivaInPdf: boolean;
+  onDownloadJson: () => void;
+  onDownloadPdf: () => void;
+  onToggleViva: (value: boolean) => void;
+  pdfLoading: boolean;
+  report: LaisrReport;
+}) {
+  const judgementReady = finalJudgementReady(report);
+  const vivaRecommended =
+    judgementReady &&
+    (report.summary.recommendation === "Viva recommended" ||
+      report.summary.recommendation === "Strong viva recommended");
+  const judgementBody =
+    judgementReady
+      ? report.aiReview.assessment
+      : report.aiReview.status === "failed"
+        ? "The final judgement is not available because the AI review failed. The evidence remains available, but LAISR should not present an overall judgement until the weighing step completes."
+        : report.aiReview.status === "not_configured"
+          ? "The evidence has been gathered, but final judgement needs the text-only AI review and evidence-synthesis step. Add OPENAI_API_KEY to enable the final judgement stage."
+          : "The evidence has been gathered. Final judgement will appear when the AI has completed the text-only review, counter-position, and overall evidence weighing.";
+
+  return (
+    <div className="reasoning-stack">
+      <section className="panel">
+        <h2>
+          <AlertTriangle size={18} />
+          Outcome scale
+        </h2>
+        <div className="outcome-ladder">
+          {OUTCOMES.map((outcome) => (
+            <div
+              className={
+                judgementReady && outcome.label === report.summary.recommendation
+                  ? `outcome-step active ${outcome.tone}`
+                  : `outcome-step ${outcome.tone}`
+              }
+              key={outcome.label}
+            >
+              <span>{outcome.label}</span>
+              <p>{outcome.description}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <ReasoningBlock
+        body={judgementBody}
+        icon={<CheckCircle2 size={18} />}
+        title={judgementReady ? "Final evidence-weighted judgement" : "Final judgement pending"}
+      />
+
+      <section className="panel">
+        <div className="judgement-header">
+          <h2>
+            <Download size={18} />
+            Report export
+          </h2>
+          {vivaRecommended ? (
+            <label className="toggle-row">
+              <input
+                checked={includeVivaInPdf}
+                type="checkbox"
+                onChange={(event) => onToggleViva(event.target.checked)}
+              />
+              Include viva questions in PDF
+            </label>
+          ) : null}
+        </div>
+
+        <div className="report-actions solid">
+          <button
+            className="primary-button"
+            type="button"
+            disabled={pdfLoading || !judgementReady}
+            onClick={onDownloadPdf}
+          >
+            {pdfLoading ? <Loader2 className="spin" size={18} /> : <Download size={18} />}
+            Download PDF
+          </button>
+          <button className="outline-button" type="button" onClick={onDownloadJson}>
+            JSON
+          </button>
+        </div>
+      </section>
+
+      {vivaRecommended ? (
+        <section className="panel">
+          <h2>
+            <FileQuestion size={18} />
+            Viva options
+          </h2>
+          <details className="viva-details">
+            <summary>
+              Suggested viva questions
+              <span>{report.vivaQuestions.length} generated</span>
+            </summary>
+            <div className="question-list">
+              {report.vivaQuestions.map((question, index) => (
+                <div className="question" key={`${question.question}-${index}`}>
+                  <strong>{index + 1}. {question.question}</strong>
+                  <p>{question.rationale}</p>
+                </div>
+              ))}
+            </div>
+          </details>
+        </section>
+      ) : (
+        <section className="panel">
+          <h2>
+            <FileQuestion size={18} />
+            Viva options
+          </h2>
+          <p className="muted">
+            {judgementReady
+              ? "Viva questions are not generated because the current judgement does not recommend a viva."
+              : "Viva questions will only appear if the completed judgement recommends a viva."}
+          </p>
+        </section>
+      )}
+    </div>
+  );
+}
+
+const OUTCOMES: Array<{
+  label: LaisrReport["summary"]["recommendation"];
+  description: string;
+  tone: "clear" | "watch" | "moderate" | "high";
+}> = [
+  {
+    label: "No significant indicators detected",
+    description: "Checks completed without notable concern from the current evidence streams.",
+    tone: "clear"
+  },
+  {
+    label: "Examiner review recommended",
+    description: "Some indicators are present and should be read by an examiner before deciding next steps.",
+    tone: "watch"
+  },
+  {
+    label: "Viva recommended",
+    description: "Indicators are sufficient to make an authorship discussion proportionate.",
+    tone: "moderate"
+  },
+  {
+    label: "Strong viva recommended",
+    description: "Multiple or serious indicators cluster enough to prioritise viva preparation.",
+    tone: "high"
+  }
+];
+
+export function ReasoningBlock({
+  body,
+  icon,
+  title
+}: {
+  body: string;
+  icon: ReactNode;
+  title: string;
+}) {
+  return (
+    <section className="panel reasoning-panel">
+      <h2>
+        {icon}
+        {title}
+      </h2>
+      <p>{body}</p>
+    </section>
+  );
+}
+
+export function FindingCard({ finding }: { finding: LaisrReport["findings"][number] }) {
+  return (
+    <article className={`finding ${finding.severity}`}>
+      <div className="finding-head">
+        <span>{severityLabel(finding.severity)}</span>
+        <strong>{finding.title}</strong>
+      </div>
+      <p className="specific-summary">
+        <strong>What LAISR found in this file:</strong> {plainFindingObservation(finding)}
+      </p>
+      <p className="plain-summary">
+        <strong>Why this is being shown:</strong> {plainFindingSummary(finding)}
+      </p>
+      <details className="technical-evidence">
+        <summary>Technical evidence</summary>
+        <p>{finding.evidence}</p>
+      </details>
+      <dl>
+        {finding.normalRange ? (
+          <div>
+            <dt>What this is compared with</dt>
+            <dd>{finding.normalRange}</dd>
+          </div>
+        ) : null}
+        <div>
+          <dt>Why this may matter</dt>
+          <dd>{finding.interpretation}</dd>
+        </div>
+        <div>
+          <dt>Other possible explanations</dt>
+          <dd>{finding.counterArgument}</dd>
+        </div>
+        <div>
+          <dt>Useful viva follow-up</dt>
+          <dd>{finding.vivaAngle}</dd>
+        </div>
+      </dl>
+    </article>
+  );
+}
+
+export function LinguisticMap({ report }: { report: LaisrReport }) {
+  const segments = report.linguisticProfile.segments;
+
+  if (segments.length === 0) {
+    return <p>No long-enough text segments were available for complexity mapping.</p>;
+  }
+
+  return (
+    <div className="linguistic-map">
+      <div className="map-head">
+        <span>Complexity, formal-register, and passive-voice map</span>
+        <small>{report.linguisticProfile.consistencyScore}/100 - {report.linguisticProfile.consistencyLabel}</small>
+      </div>
+      <div className="segment-grid">
+        {segments.map((segment) => (
+          <div
+            className={`segment-cell complexity-${segment.complexityBand} register-${segment.registerBand} passive-${segment.passiveBand}`}
+            key={segment.index}
+            title={`Segment ${segment.index + 1}: FK grade ${segment.fkGrade.toFixed(1)}, Fog ${segment.fogIndex.toFixed(1)}, formal density ${segment.formalDensity.toFixed(1)} per 100 words, passive density ${segment.passiveDensity.toFixed(1)} per sentence`}
+          >
+            {segment.index + 1}
+          </div>
+        ))}
+      </div>
+      <div className="map-legend">
+        <span><i className="legend low" />Lower complexity</span>
+        <span><i className="legend normal" />Typical range</span>
+        <span><i className="legend high" />Higher complexity</span>
+        <span><i className="legend register" />Formal wording spike</span>
+        <span><i className="legend passive" />Passive voice spike</span>
+      </div>
+    </div>
+  );
+}
+
+export function ComparativePanel({ report }: { report: LaisrReport }) {
+  const profile = report.comparativeProfile;
+
+  if (!profile.available) {
+    return (
+      <div className="compare-panel empty">
+        <strong>No authenticated sample supplied</strong>
+        <p>Upload a known piece of the candidate&apos;s writing to compare style, sentence length, vocabulary range, and register against the submitted document.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="compare-panel">
+      <div className="compare-score">
+        <strong>{profile.score}/100</strong>
+        <span>{profile.label}</span>
+        <small>Compared with {profile.sampleFileName}</small>
+      </div>
+      <div className="compare-bars">
+        {profile.metrics.map((metric) => (
+          <div className={`compare-metric ${metric.severity}`} key={metric.label}>
+            <div>
+              <strong>{metric.label}</strong>
+              <span>Submitted {metric.submitted.toFixed(2)} / Sample {metric.authenticated.toFixed(2)}</span>
+            </div>
+            <i style={{ width: `${Math.min(100, Math.max(4, metric.difference * 12))}%` }} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}

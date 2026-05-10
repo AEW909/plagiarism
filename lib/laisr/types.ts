@@ -1,5 +1,14 @@
 export type Severity = "info" | "notable" | "serious" | "critical";
 
+export type FindingAnchor = {
+  type: "file" | "paragraph" | "segment";
+  start?: number;
+  end?: number;
+  label?: string;
+};
+
+export type FindingFacts = Record<string, string | number | boolean | string[] | number[]>;
+
 export type Finding = {
   id: string;
   category: string;
@@ -11,13 +20,15 @@ export type Finding = {
   interpretation: string;
   counterArgument: string;
   vivaAngle: string;
+  anchors?: FindingAnchor[];
+  facts?: FindingFacts;
 };
 
 export type EvidenceCheck = {
   id: string;
   label: string;
   category: string;
-  status: "clear" | "issues";
+  status: "clear" | "issues" | "pending" | "not_run";
   summary: string;
   detail: string;
   findingIds: string[];

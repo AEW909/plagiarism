@@ -1,5 +1,14 @@
 import type { ExtractedDocx } from "./docx";
-import type { EvidenceCheck, Finding, LaisrReport, VivaQuestion } from "./types";
+import { buildEvidenceChecks } from "./evidence-checks";
+import {
+  buildAssessment,
+  buildCounterArgument,
+  buildInterpretation,
+  buildVivaQuestions,
+  getRecommendation,
+  shouldRecommendViva
+} from "./recommendation";
+import type { Finding, FindingAnchor, LaisrReport } from "./types";
 
 type ReportInput = {
   doc: ExtractedDocx;
@@ -312,127 +321,6 @@ export function buildReport(input: ReportInput): LaisrReport {
     aiReview: input.aiReview,
     extractedTextPreview: input.doc.text
   };
-}
-
-const CHECK_DEFINITIONS = [
-  {
-    id: "package",
-    label: "Package envelope",
-    category: "Package Forensics",
-    clearDetail:
-      "Checked ZIP package member timestamps for unusually compressed rewrite patterns across core document parts."
-  },
-  {
-    id: "metadata",
-    label: "Document metadata",
-    category: "Document Metadata",
-    clearDetail:
-      "Checked creator, last editor, created/modified dates, revision count, editing time, page count, word count, and application metadata."
-  },
-  {
-    id: "xml",
-    label: "Word XML forensics",
-    category: "XML Forensics",
-    clearDetail:
-      "Checked edit-session IDs, pasted-session clues, hidden or white text, browser-origin font markers, tracked-formatting signals, and font diversity."
-  },
-  {
-    id: "textual",
-    label: "Textual anomalies",
-    category: "Textual Anomalies",
-    clearDetail:
-      "Checked suspicious substitutions, structural grammar artefacts, merged compound words, and copy/paste artefacts."
-  },
-  {
-    id: "stylometric",
-    label: "Stylometric indicators",
-    category: "Stylometric Indicators",
-    clearDetail:
-      "Checked transition phrase density, repeated opener patterns, paragraph similarity, and repeated/circular phrasing signals."
-  },
-  {
-    id: "linguistic",
-    label: "Linguistic consistency",
-    category: "Linguistic Consistency",
-    clearDetail:
-      "Checked segment-level complexity, readability shifts, formal register spikes, and consistency against the document's own baseline."
-  },
-  {
-    id: "relationships",
-    label: "Relationships and embedded objects",
-    category: "Relationships and Embedded Objects",
-    clearDetail:
-      "Checked relationship files, external targets, hyperlinks, embedded packages/objects, media references, and custom XML relationships."
-  },
-  {
-    id: "comparative",
-    label: "Authenticated writing comparison",
-    category: "Authenticated Writing Comparison",
-    clearDetail:
-      "No authenticated writing sample was supplied, so LAISR could not compare this submission with known writing by the same candidate."
-  },
-  {
-    id: "ai",
-    label: "AI plagiarism/authorship opinion",
-    category: "AI Evidence Opinion",
-    clearDetail:
-      "Checked whether the optional AI evidence layer completed a direct plagiarism/authorship opinion before the later interpretation and judgement stages."
-  }
-] as const;
-
-function buildEvidenceChecks(findings: Finding[], aiReview: LaisrReport["aiReview"]): EvidenceCheck[] {
-  return CHECK_DEFINITIONS.map((definition) => {
-    if (definition.id === "ai") {
-      const aiIssue =
-        aiReview.status === "failed" ||
-        aiReview.evidenceConcern === "moderate" ||
-        aiReview.evidenceConcern === "high";
-      return {
-        id: definition.id,
-        label: definition.label,
-        category: definition.category,
-        status: aiIssue ? "issues" : "clear",
-        summary:
-          aiReview.status === "completed"
-            ? aiIssue
-              ? `AI reported ${aiReview.evidenceConcern} concern`
-              : `AI reported ${aiReview.evidenceConcern === "none" ? "no" : "low"} concern`
-            : aiReview.status === "failed"
-              ? "AI review failed"
-              : aiReview.status === "pending"
-                ? "AI review in progress"
-              : "AI review not configured",
-        detail:
-          aiReview.status === "completed"
-            ? `The AI evidence layer reviewed the text directly for plagiarism, AI-assistance, patchwriting, or authorship-inconsistency indicators and returned a "${aiReview.evidenceConcern}" concern level. Interpretation, counter-argument, and final weighing are handled in later report stages.`
-            : aiReview.status === "failed"
-              ? aiReview.assessment
-              : aiReview.status === "pending"
-                ? "The deterministic checks have completed. The AI interpretation layer is still running and will update this report when it returns."
-              : "The deterministic checks completed, but no AI opinion was generated because OPENAI_API_KEY was not configured.",
-        findingIds: []
-      };
-    }
-
-    const categoryFindings = findings.filter((finding) => finding.category === definition.category);
-    const issueCount = categoryFindings.length;
-
-    return {
-      id: definition.id,
-      label: definition.label,
-      category: definition.category,
-      status: issueCount > 0 ? "issues" : "clear",
-      summary:
-        issueCount > 0
-          ? `${issueCount} issue${issueCount === 1 ? "" : "s"} detected`
-          : "No issues detected",
-      detail:
-        issueCount > 0
-          ? `This check produced ${issueCount} finding${issueCount === 1 ? "" : "s"} in the report. Expand the related finding cards below for evidence, benchmarks, interpretation, counter-argument, and viva angle.`
-          : definition.clearDetail,
-      findingIds: categoryFindings.map((finding) => finding.id)
-    };
-  });
 }
 
 function analyseMetadata(doc: ExtractedDocx): Finding[] {
@@ -962,19 +850,23 @@ function analyseComparative(profile: LaisrReport["comparativeProfile"]): Finding
 
 function makeFinding(id: string, category: string, severity: Finding["severity"], title: string, evidence: string, normalRangeOrLocation: string, locationOrInterpretation: string, interpretationOrCounterArgument: string, counterArgumentOrVivaAngle: string, vivaAngle?: string): Finding {
   if (vivaAngle === undefined) {
+    const location = normalRangeOrLocation;
     return {
       id,
       category,
       severity,
       title,
       evidence,
-      location: normalRangeOrLocation,
+      location,
       interpretation: locationOrInterpretation,
       counterArgument: interpretationOrCounterArgument,
-      vivaAngle: counterArgumentOrVivaAngle
+      vivaAngle: counterArgumentOrVivaAngle,
+      anchors: inferFindingAnchors(location, evidence),
+      facts: inferFindingFacts(evidence)
     };
   }
 
+  const location = locationOrInterpretation;
   return {
     id,
     category,
@@ -982,114 +874,55 @@ function makeFinding(id: string, category: string, severity: Finding["severity"]
     title,
     evidence,
     normalRange: normalRangeOrLocation,
-    location: locationOrInterpretation,
+    location,
     interpretation: interpretationOrCounterArgument,
     counterArgument: counterArgumentOrVivaAngle,
-    vivaAngle
+    vivaAngle,
+    anchors: inferFindingAnchors(location, evidence),
+    facts: inferFindingFacts(evidence)
   };
 }
 
-function buildInterpretation(findings: Finding[]) {
-  if (findings.length === 0) {
-    return "The algorithmic review did not identify strong integrity indicators in the available document evidence.";
+function inferFindingFacts(evidence: string) {
+  const quotedValues = [...evidence.matchAll(/"([^"]+)"/g)].map((match) => match[1]);
+  const numbers = [...evidence.matchAll(/\b\d+(?:\.\d+)?\b/g)].map((match) => Number(match[0]));
+
+  if (quotedValues.length === 0 && numbers.length === 0) {
+    return undefined;
   }
 
-  return "The document contains observable indicators that may warrant examiner attention. The strongest interpretation depends on whether findings cluster in the same sections and whether the candidate can explain the drafting process, sources, and argument choices in viva.";
+  return {
+    ...(quotedValues.length ? { quotedValues } : {}),
+    ...(numbers.length ? { numbers } : {})
+  };
 }
 
-function buildCounterArgument(findings: Finding[], recommendation: LaisrReport["summary"]["recommendation"]) {
-  if (findings.length === 0) {
-    return "The strongest argument for further investigation is that absence of detected indicators does not prove authorship. AI involvement can leave few DOCX artefacts, paraphrased assistance may not trigger textual checks, and a polished document may still warrant discussion if external context raises concern.";
+function inferFindingAnchors(location: string | undefined, evidence: string): FindingAnchor[] | undefined {
+  const text = `${location || ""} ${evidence}`;
+  const paragraphRange = text.match(/paragraphs?\s+(\d+)(?:[-\u2013](\d+))?/i);
+  if (paragraphRange) {
+    const start = Number(paragraphRange[1]);
+    const end = Number(paragraphRange[2] || paragraphRange[1]);
+    return [{
+      type: "paragraph",
+      start: Math.min(start, end),
+      end: Math.max(start, end),
+      label: start === end ? `Paragraph ${start}` : `Paragraphs ${Math.min(start, end)}-${Math.max(start, end)}`
+    }];
   }
 
-  if (recommendation === "No significant indicators detected") {
-    return "Although the current checks do not support escalation, a cautious examiner could still consider context outside this document, such as a sudden change from authenticated work, missing drafts, or inability to explain sources. Those concerns would need separate evidence.";
+  const segment = text.match(/segment\s+(\d+)/i);
+  if (segment) {
+    const index = Number(segment[1]);
+    return [{
+      type: "segment",
+      start: index,
+      end: index,
+      label: `Segment ${index}`
+    }];
   }
 
-  const categories = Array.from(new Set(findings.map((finding) => finding.category))).join(", ");
-  return `The findings in ${categories} can have innocent explanations, including shared devices, cloud editors, templates, normal revision, legitimate source use, or uneven student writing. A fair review should test understanding and process evidence before drawing conclusions.`;
-}
-
-function buildAssessment(findings: Finding[], recommendation: string) {
-  const serious = findings.filter((finding) => finding.severity === "critical" || finding.severity === "serious").length;
-  const notable = findings.filter((finding) => finding.severity === "notable").length;
-  return `${recommendation}. This assessment is based on ${serious} serious/critical and ${notable} notable algorithmic indicators. It is a triage recommendation for examiner judgment, not a misconduct verdict.`;
-}
-
-function buildVivaQuestions(findings: Finding[], subject: string): VivaQuestion[] {
-  const questions: VivaQuestion[] = [
-    {
-      question: `In your own words, what is the central argument of your ${subject || "essay"}?`,
-      rationale: "Tests basic ownership of the submission."
-    },
-    {
-      question: "Which source or piece of evidence most influenced your conclusion, and why?",
-      rationale: "Tests research process and source understanding."
-    },
-    {
-      question: "What changed most between your first draft and final draft?",
-      rationale: "Opens space for authorship process evidence."
-    }
-  ];
-
-  const rsidProcessFindings = findings.filter((finding) =>
-    [
-      "xml-low-rsid-diversity",
-      "xml-bulk-rsid-block",
-      "xml-rsid-missing-from-settings",
-      "xml-rsid"
-    ].includes(finding.id)
-  );
-  if (rsidProcessFindings.length > 0) {
-    questions.push({
-      question:
-        "Can you talk me through exactly how this document was drafted: where you wrote the first version, whether you copied sections from notes or another file, and whether you used Word, Google Docs, a plain-text editor, or another tool?",
-      rationale:
-        "The DOCX edit-session pattern raises a process question. This does not prove misconduct, but it is a useful way to check whether the candidate's account of drafting fits the file evidence.",
-      linkedFinding: rsidProcessFindings[0].id
-    });
-  }
-
-  for (const finding of findings.slice(0, 8)) {
-    questions.push({
-      question: finding.vivaAngle,
-      rationale: finding.evidence,
-      linkedFinding: finding.id
-    });
-  }
-
-  questions.push(
-    {
-      question: "What is the most important limitation of the evidence you reviewed?",
-      rationale: "Tests methodological understanding."
-    },
-    {
-      question: "How would you design a stronger study or investigation to answer your research question?",
-      rationale: "Tests genuine subject mastery beyond the written text."
-    }
-  );
-
-  return questions;
-}
-
-function getRecommendation(seriousCount: number, notableCount: number): LaisrReport["summary"]["recommendation"] {
-  if (seriousCount >= 2 || (seriousCount === 1 && notableCount >= 3)) {
-    return "Strong viva recommended";
-  }
-
-  if (seriousCount === 1 || notableCount >= 4) {
-    return "Viva recommended";
-  }
-
-  if (notableCount >= 2) {
-    return "Examiner review recommended";
-  }
-
-  return "No significant indicators detected";
-}
-
-function shouldRecommendViva(recommendation: LaisrReport["summary"]["recommendation"]) {
-  return recommendation === "Viva recommended" || recommendation === "Strong viva recommended";
+  return undefined;
 }
 
 function tokenize(text: string) {

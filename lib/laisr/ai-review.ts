@@ -12,8 +12,8 @@ export async function runAiReview(
       enabled: false,
       status: "not_configured",
       evidenceConcern: "not_run",
-      evidenceOpinion: "AI plagiarism/authorship evidence review is not configured.",
-      opinion: "AI analysis is not configured. Add OPENAI_API_KEY to enable the interpretive review layer.",
+      evidenceOpinion: "AI text review is not configured.",
+      opinion: "AI review is not configured. Add OPENAI_API_KEY to enable the text-only review and synthesis layers.",
       counterArgument: "The algorithmic review remains available without AI analysis.",
       assessment: "No AI opinion was generated for this report.",
       vivaQuestions: []
@@ -28,22 +28,14 @@ export async function runAiReview(
         {
           role: "developer",
           content:
-            "You are giving an academic integrity evidence opinion. Assess the text and the collected file/XML/style findings for possible plagiarism, AI assistance, patchwriting, or authorship inconsistency. Explain technical file evidence in plain examiner-friendly language. Use cautious language and do not accuse."
+            "You are giving a text-only academic integrity evidence opinion. Assess only the submitted writing for possible direct copying, close paraphrase, patchwriting, AI-assisted writing or rewriting, and authorship inconsistency. Do not use or infer from metadata, XML, stylometric metrics, file structure, or other forensic checks. Use cautious language and do not accuse."
         },
         {
           role: "user",
           content: JSON.stringify({
             task:
-              "Give the kind of concise opinion you would give if an examiner pasted this work and its DOCX forensic findings into an AI system and asked whether it shows indicators of plagiarism or AI involvement. Return JSON only with keys evidenceConcern and evidenceOpinion. evidenceConcern must be one of: none, low, moderate, high. Mention textual features, XML/file-structure clues in plain language, limitations, and whether the opinion supports or weakens further investigation.",
-            textPreview: doc.text.slice(0, 9000),
-            findings: findings.map((finding) => ({
-              category: finding.category,
-              severity: finding.severity,
-              title: finding.title,
-              evidence: finding.evidence,
-              normalRange: finding.normalRange,
-              location: finding.location
-            }))
+              "Give the kind of concise opinion you would give if an examiner pasted only the submitted writing into an AI system and asked whether the text itself shows indicators of academic malpractice. Consider direct copying, close paraphrase, source patchwriting, AI-assisted writing or rewriting, and authorship inconsistency. Return JSON only with keys evidenceConcern and evidenceOpinion. evidenceConcern must be one of: none, low, moderate, high. Mention specific textual features or passages where useful, but do not claim that a passage appears online unless a supplied source or explicit search result supports that claim. Do not discuss DOCX metadata, XML, RSIDs, formatting residue, stylometric metrics, or deterministic findings because they have not been provided to this text-only review.",
+            textPreview: doc.text.slice(0, 9000)
           })
         }
       ],
@@ -54,58 +46,78 @@ export async function runAiReview(
       }
     });
     const evidenceParsed = JSON.parse(evidenceResponse.output_text || "{}") as Partial<AiReview>;
+    const evidenceConcern = normaliseEvidenceConcern(evidenceParsed.evidenceConcern, evidenceParsed.evidenceOpinion);
+    const evidenceOpinion =
+      evidenceParsed.evidenceOpinion || "AI text review completed but did not return an evidence opinion.";
 
-    const response = await client.responses.create({
-      model: process.env.OPENAI_MODEL || "gpt-5",
-      input: [
-        {
-          role: "developer",
-          content:
-            "You are an academic integrity review assistant for LAISR. Do not accuse a student of misconduct. Treat AI analysis as one interpretive evidence stream alongside metadata, XML, textual, stylometric, linguistic, and authenticated-work evidence. Use cautious language. Your task is to help an examiner decide whether further review or viva discussion is warranted."
-        },
-        {
-          role: "user",
-          content: JSON.stringify({
-            task:
-              "Review this document text alongside algorithmic findings. Return JSON only with keys opinion, counterArgument, assessment, vivaQuestions. The opinion should interpret the evidence in the direction of the current recommendation. The counterArgument must argue the opposite side: if the current recommendation is low concern, make the strongest fair case for possible AI involvement or further investigation; if the current recommendation suggests review or viva, make the strongest fair innocent explanation. The assessment should say which argument currently holds most weight and why. Do not use percentage-likelihood claims. Only return vivaQuestions if the recommendation is Viva recommended or Strong viva recommended; otherwise return an empty array. vivaQuestions must be objects with question and rationale, linked to the text or findings where possible.",
-            recommendation,
-            textPreview: doc.text.slice(0, 9000),
-            findings: findings.map((finding) => ({
-              category: finding.category,
-              severity: finding.severity,
-              title: finding.title,
-              evidence: finding.evidence,
-              normalRange: finding.normalRange,
-              location: finding.location
-            }))
-          })
+    try {
+      const response = await client.responses.create({
+        model: process.env.OPENAI_MODEL || "gpt-5",
+        input: [
+          {
+            role: "developer",
+            content:
+              "You are an academic integrity synthesis assistant for LAISR. Do not accuse a student of misconduct. The text-only AI review is one evidence stream alongside metadata, XML, textual, stylometric, linguistic, authenticated-work, and source-use evidence. Use cautious language. Your task is to help an examiner decide whether further review or viva discussion is warranted."
+          },
+          {
+            role: "user",
+            content: JSON.stringify({
+              task:
+                "Review the full evidence package. Return JSON only with keys opinion, counterArgument, assessment, vivaQuestions. The opinion should be the interpretive case: what is the strongest academic-integrity concern raised by all available evidence, including the text-only AI review and deterministic findings? The counterArgument must be the strongest fair opposing case: if the current recommendation is low concern, make the best case for possible malpractice or further investigation; if the current recommendation suggests review or viva, make the best innocent/process-based explanation. The assessment should weigh the two cases and say which currently holds more weight and why, making clear that LAISR is making a triage recommendation rather than a misconduct finding. Consider direct copying, close paraphrase, source patchwriting, AI-assisted rewriting, undisclosed human assistance, contract-cheating/process concerns, document assembly, and authorship inconsistency. Do not use percentage-likelihood claims. Do not claim online matches unless source-search evidence has been supplied. Only return vivaQuestions if the recommendation is Viva recommended or Strong viva recommended; otherwise return an empty array. vivaQuestions must be objects with question and rationale, linked to the text or findings where possible.",
+              recommendation,
+              textPreview: doc.text.slice(0, 9000),
+              textOnlyAiReview: {
+                evidenceConcern,
+                evidenceOpinion
+              },
+              findings: findings.map((finding) => ({
+                category: finding.category,
+                severity: finding.severity,
+                title: finding.title,
+                evidence: finding.evidence,
+                normalRange: finding.normalRange,
+                location: finding.location
+              }))
+            })
+          }
+        ],
+        text: {
+          format: {
+            type: "json_object"
+          }
         }
-      ],
-      text: {
-        format: {
-          type: "json_object"
-        }
-      }
-    });
+      });
 
-    const parsed = JSON.parse(response.output_text || "{}") as Partial<AiReview>;
-    return {
-      enabled: true,
-      status: "completed",
-      evidenceConcern: normaliseEvidenceConcern(evidenceParsed.evidenceConcern, evidenceParsed.evidenceOpinion),
-      evidenceOpinion: evidenceParsed.evidenceOpinion || "AI evidence review completed but did not return an evidence opinion.",
-      opinion: parsed.opinion || "AI review completed but did not return an opinion.",
-      counterArgument: parsed.counterArgument || "No AI counter-argument was returned.",
-      assessment: parsed.assessment || "No AI assessment was returned.",
-      vivaQuestions: Array.isArray(parsed.vivaQuestions) ? parsed.vivaQuestions.slice(0, 8) : []
-    };
+      const parsed = JSON.parse(response.output_text || "{}") as Partial<AiReview>;
+      return {
+        enabled: true,
+        status: "completed",
+        evidenceConcern,
+        evidenceOpinion,
+        opinion: parsed.opinion || "AI synthesis completed but did not return an interpretation.",
+        counterArgument: parsed.counterArgument || "No AI counter-argument was returned.",
+        assessment: parsed.assessment || "No AI assessment was returned.",
+        vivaQuestions: Array.isArray(parsed.vivaQuestions) ? parsed.vivaQuestions.slice(0, 8) : []
+      };
+    } catch (error) {
+      return {
+        enabled: true,
+        status: "failed",
+        evidenceConcern,
+        evidenceOpinion,
+        opinion: "The text-only AI review completed, but the evidence synthesis step failed.",
+        counterArgument: "Do not treat absence of AI synthesis as evidence either way.",
+        assessment: error instanceof Error ? error.message : "Unknown AI synthesis error.",
+        vivaQuestions: []
+      };
+    }
   } catch (error) {
     return {
       enabled: true,
       status: "failed",
       evidenceConcern: "unavailable",
-      evidenceOpinion: "AI evidence review failed while the algorithmic review completed.",
-      opinion: "AI analysis failed while the algorithmic review completed.",
+      evidenceOpinion: "AI text review failed while the algorithmic review completed.",
+      opinion: "AI review failed while the algorithmic review completed.",
       counterArgument: "Do not treat absence of AI output as evidence either way.",
       assessment: error instanceof Error ? error.message : "Unknown AI review error.",
       vivaQuestions: []

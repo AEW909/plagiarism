@@ -803,9 +803,19 @@ input:focus {
   color: var(--accent-strong);
 }
 
-.tag.issue {
+.tag.issues {
   background: rgba(185, 74, 72, 0.11);
   color: var(--red);
+}
+
+.tag.pending {
+  background: rgba(182, 123, 24, 0.12);
+  color: var(--gold);
+}
+
+.tag.not_run {
+  background: rgba(100, 107, 95, 0.12);
+  color: var(--muted);
 }
 
 .check-detail {

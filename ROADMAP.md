@@ -4,7 +4,7 @@
 
 **LAISR: Learning Authorship Integrity Signal Review**
 
-LAISR is an academic integrity review tool for examiners and moderators. It gathers multiple forms of evidence from a submitted document, helps interpret those signals, presents plausible counter-arguments, and supports a fair decision about whether a viva is warranted.
+LAISR is an academic integrity review tool for examiners and moderators. It gathers multiple forms of evidence from a submitted document, helps interpret those signals, presents plausible counter-arguments, and supports a fair decision about whether a viva is warranted. Its scope is broader than AI detection: it should help review possible direct copying, close paraphrasing, source patchwriting, undisclosed assistance, contract-cheating/process concerns, AI-assisted writing, and authorship inconsistency.
 
 The tool must not accuse a candidate of misconduct. Its purpose is to identify authorship and integrity indicators, prepare evidence-linked viva questions, and give candidates a fair opportunity to demonstrate ownership of their work.
 
@@ -39,7 +39,8 @@ Collect observable signals from independent sources:
 - stylometric repetition and paragraph similarity
 - linguistic and register consistency
 - comparison with authenticated student work
-- AI-assisted textual review
+- text-only AI review covering source-use, authorship, close paraphrase, plagiarism, AI-writing, and undisclosed assistance indicators
+- future online/source-index matching for passages where exact or close copying is suspected
 
 This layer should be factual and concrete.
 
@@ -104,18 +105,37 @@ All findings should be returned as structured JSON with category, severity, titl
 
 ### 3. AI Analysis
 
-AI should provide a named evidence stream alongside algorithmic findings.
+AI should operate in two distinct stages. The first stage is a named text-only evidence stream alongside algorithmic findings. The second stage synthesises that text-only opinion with metadata, XML, stylometric, linguistic, authenticated-writing, and source-use evidence. It should not be framed as an "AI detector"; it should help review source-use, authorship, drafting-process, and malpractice indicators.
 
-AI tasks:
+AI stage 1 task:
 
-- assess authorship consistency
-- identify prose features associated with AI-assisted drafting
+- assess only the submitted text for prose features associated with direct copying, close paraphrase, source patchwriting, AI-assisted drafting, or authorship inconsistency
+- return a cautious concern level without seeing metadata, XML, stylometrics, or deterministic findings
+
+AI stage 2 tasks:
+
 - synthesise findings across modules
 - generate cautious interpretations
 - generate counter-arguments
 - generate evidence-linked viva questions
 
 AI must not produce a standalone misconduct conclusion.
+
+### 3a. Online Source Matching
+
+LAISR should eventually check whether high-concern passages appear online or in supplied source materials.
+
+Possible approach:
+
+- support Google Custom Search JSON API / Programmable Search Engine as an optional first provider
+- use `GOOGLE_SEARCH_API_KEY` and `GOOGLE_SEARCH_ENGINE_ID` environment variables
+- extract candidate passages from high-complexity, high-formality, near-duplicate, or source-like sections
+- search short distinctive snippets rather than whole paragraphs
+- record exact source URLs, titles, dates accessed, and matched wording
+- separate exact copying from close paraphrase and common phrasing
+- avoid sending sensitive student work to broad search APIs without consent and retention controls
+
+This will require either a web search API, an academic/source index, or teacher-supplied source corpora. Until then, LAISR should say "source-like" or "worth checking", not "found online".
 
 ### 4. Comparison With Authenticated Work
 
