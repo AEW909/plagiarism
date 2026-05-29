@@ -1,33 +1,37 @@
 "use client";
 
 import {
-  AlertTriangle,
   ArrowLeft,
-  Brain,
-  CheckCircle2,
+  Bot,
   FileSearch,
+  FileText,
+  Layers,
+  Scale,
   ShieldCheck,
-  Users
+  UserCheck
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
-  CounterArgumentTab,
-  EvidenceTab,
   HomeOptions,
-  InterpretationTab,
-  JudgementTab,
+  SectionReviewTab,
   SingleUploadScreen,
   SummaryItem,
+  SummaryRecommendationTab,
   TabButton
 } from "@/components/laisr/app-sections";
-import {
-  finalJudgementReady,
-  recommendationClass
-} from "@/lib/laisr/finding-presentation";
-import type { LaisrReport } from "@/lib/laisr/types";
+import { buildAlgorithmicSections, buildSummarySection } from "@/lib/laisr/sections";
+import type { LaisrReport, ReviewSectionId, SectionAiReview } from "@/lib/laisr/types";
 
-type ReportTab = "evidence" | "interpretation" | "counter" | "judgement";
+type ReportTab = ReviewSectionId;
 type AppView = "home" | "single";
+
+const TAB_ICONS: Record<ReportTab, ReactNode> = {
+  metadata: <FileSearch size={17} />,
+  textual: <FileText size={17} />,
+  comparative: <UserCheck size={17} />,
+  ai_prose: <Bot size={17} />,
+  summary: <Scale size={17} />
+};
 
 export default function Home() {
   const [view, setView] = useState<AppView>("home");
@@ -38,15 +42,16 @@ export default function Home() {
   const [report, setReport] = useState<LaisrReport | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [aiLoading, setAiLoading] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<ReportTab>("evidence");
+  const [activeTab, setActiveTab] = useState<ReportTab>("metadata");
   const [includeVivaInPdf, setIncludeVivaInPdf] = useState(true);
   const [analysisStage, setAnalysisStage] = useState<"idle" | "deterministic" | "ai" | "complete">("idle");
   const [aiConfig, setAiConfig] = useState<{
     aiConfigured: boolean;
     model: string;
   } | null>(null);
+  const [sectionAiReviews, setSectionAiReviews] = useState<Partial<Record<ReviewSectionId, SectionAiReview>>>({});
+  const [sectionAiLoading, setSectionAiLoading] = useState<ReviewSectionId | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -69,6 +74,13 @@ export default function Home() {
     };
   }, []);
 
+  const reportSections = useMemo(() => report ? buildAlgorithmicSections(report) : [], [report]);
+  const summarySection = useMemo(() => report ? buildSummarySection(report) : null, [report]);
+  const visibleTabs = useMemo(() => {
+    const base = reportSections.filter((section) => section.id !== "comparative" || section.available);
+    return summarySection ? [...base, summarySection] : base;
+  }, [reportSections, summarySection]);
+
   async function analyseDocument() {
     if (!file) {
       setError("Choose a .docx file first.");
@@ -79,6 +91,7 @@ export default function Home() {
     setAnalysisStage("deterministic");
     setError("");
     setReport(null);
+    setSectionAiReviews({});
 
     const formData = new FormData();
     formData.append("file", file);
@@ -100,14 +113,8 @@ export default function Home() {
       }
 
       setReport(payload);
-      setActiveTab("evidence");
-      setLoading(false);
-
-      if (aiConfig?.aiConfigured !== false) {
-        await enrichWithAi(file, candidateId, subject);
-      } else {
-        setAnalysisStage("complete");
-      }
+      setActiveTab("metadata");
+      setAnalysisStage("complete");
     } catch (analysisError) {
       setError(analysisError instanceof Error ? analysisError.message : "Analysis failed.");
       setAnalysisStage("idle");
@@ -116,62 +123,47 @@ export default function Home() {
     }
   }
 
-  async function enrichWithAi(selectedFile: File, selectedCandidateId: string, selectedSubject: string) {
-    setAiLoading(true);
-    setAnalysisStage("ai");
-
-    const formData = new FormData();
-    formData.append("file", selectedFile);
-    if (authenticatedFile) {
-      formData.append("authenticatedFile", authenticatedFile);
+  async function runSectionAi(sectionId: ReviewSectionId) {
+    if (!report) {
+      return;
     }
-    formData.append("candidateId", selectedCandidateId);
-    formData.append("subject", selectedSubject);
+
+    setSectionAiLoading(sectionId);
+    setError("");
 
     try {
-      const response = await fetch("/api/analyse/ai", {
+      const response = await fetch("/api/ai/section", {
         method: "POST",
-        body: formData
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          report,
+          sectionId
+        })
       });
       const payload = await response.json();
 
       if (!response.ok) {
-        throw new Error(payload.error || "AI analysis failed.");
+        throw new Error(payload.error || "AI section review failed.");
       }
 
-      setReport(payload);
-      setAnalysisStage("complete");
+      setSectionAiReviews((current) => ({
+        ...current,
+        [sectionId]: payload
+      }));
     } catch (aiError) {
-      setReport((currentReport) =>
-        currentReport
-          ? {
-              ...currentReport,
-              aiReview: {
-                enabled: true,
-                status: "failed",
-                evidenceConcern: "unavailable",
-                evidenceOpinion: "Text-only AI review failed while deterministic review remained available.",
-                opinion: "AI evidence synthesis failed while deterministic review remained available.",
-                counterArgument: "Do not treat absence of AI output as evidence either way.",
-                assessment: aiError instanceof Error ? aiError.message : "AI review failed.",
-                vivaQuestions: []
-              },
-              evidenceChecks: currentReport.evidenceChecks.map((check) =>
-                check.id === "ai"
-                  ? {
-                      ...check,
-                      status: "issues",
-                      summary: "AI review failed",
-                      detail: aiError instanceof Error ? aiError.message : "AI review failed."
-                    }
-                  : check
-              )
-            }
-          : currentReport
-      );
-      setAnalysisStage("complete");
+      setSectionAiReviews((current) => ({
+        ...current,
+        [sectionId]: {
+          sectionId,
+          status: "failed",
+          concern: "unavailable",
+          opinion: aiError instanceof Error ? aiError.message : "AI section review failed."
+        }
+      }));
     } finally {
-      setAiLoading(false);
+      setSectionAiLoading(null);
     }
   }
 
@@ -238,9 +230,12 @@ export default function Home() {
     setSubject("");
     setError("");
     setAnalysisStage("idle");
-    setActiveTab("evidence");
+    setActiveTab("metadata");
+    setSectionAiReviews({});
     setView("home");
   }
+
+  const activeSection = visibleTabs.find((section) => section.id === activeTab) ?? visibleTabs[0];
 
   return (
     <main className="shell">
@@ -264,20 +259,15 @@ export default function Home() {
 
       {report ? (
         <section className="report">
-          <div className={`recommendation ${finalJudgementReady(report) ? recommendationClass(report.summary.recommendation) : "pending"}`}>
+          <div className="recommendation">
             <div>
               <p className="eyebrow">
-                <AlertTriangle size={16} />
-                {finalJudgementReady(report) ? "Review recommendation" : "Evidence triage"}
+                <Layers size={16} />
+                Sectioned review
               </p>
-              <strong>
-                {finalJudgementReady(report)
-                  ? report.summary.recommendation
-                  : "Final judgement pending evidence synthesis"}
-              </strong>
+              <strong>{summarySection?.judgement || report.summary.recommendation}</strong>
               <span>
-                {report.summary.seriousCount} serious/critical indicators{" - "}
-                {report.summary.notableCount} notable indicators collected so far
+                Algorithmic findings are separated from optional AI opinions. Use each robot button only when that scoped AI view is wanted.
               </span>
             </div>
           </div>
@@ -292,57 +282,52 @@ export default function Home() {
 
           <section className="tab-shell">
             <div className="tabs" role="tablist" aria-label="LAISR report sections">
-              <TabButton
-                active={activeTab === "evidence"}
-                icon={<FileSearch size={17} />}
-                label="Evidence"
-                onClick={() => setActiveTab("evidence")}
-              />
-              <TabButton
-                active={activeTab === "interpretation"}
-                icon={<Brain size={17} />}
-                label="Interpretation"
-                onClick={() => setActiveTab("interpretation")}
-              />
-              <TabButton
-                active={activeTab === "counter"}
-                icon={<Users size={17} />}
-                label="Counter-Argument"
-                onClick={() => setActiveTab("counter")}
-              />
-              <TabButton
-                active={activeTab === "judgement"}
-                icon={<CheckCircle2 size={17} />}
-                label="Final Judgement"
-                onClick={() => setActiveTab("judgement")}
-              />
+              {visibleTabs.map((section) => (
+                <TabButton
+                  active={activeTab === section.id}
+                  icon={TAB_ICONS[section.id]}
+                  key={section.id}
+                  label={section.id === "ai_prose" ? "AI opinion" : section.id === "summary" ? "Summary" : section.label}
+                  onClick={() => setActiveTab(section.id)}
+                />
+              ))}
             </div>
 
             <div className="tab-panel">
-              {activeTab === "evidence" ? (
-                <EvidenceTab report={report} />
-              ) : null}
-              {activeTab === "interpretation" ? <InterpretationTab report={report} /> : null}
-              {activeTab === "counter" ? <CounterArgumentTab report={report} /> : null}
-              {activeTab === "judgement" ? (
-                <JudgementTab
+              {activeSection?.id === "summary" && summarySection ? (
+                <SummaryRecommendationTab
+                  aiConfigured={Boolean(aiConfig?.aiConfigured)}
+                  aiLoading={sectionAiLoading === "summary"}
+                  aiReview={sectionAiReviews.summary}
                   includeVivaInPdf={includeVivaInPdf}
                   onDownloadJson={downloadJson}
                   onDownloadPdf={downloadPdf}
+                  onRunAi={() => runSectionAi("summary")}
                   onToggleViva={setIncludeVivaInPdf}
                   pdfLoading={pdfLoading}
                   report={report}
+                  section={summarySection}
+                />
+              ) : activeSection ? (
+                <SectionReviewTab
+                  aiConfigured={Boolean(aiConfig?.aiConfigured)}
+                  aiLoading={sectionAiLoading === activeSection.id}
+                  aiReview={sectionAiReviews[activeSection.id]}
+                  onRunAi={() => runSectionAi(activeSection.id)}
+                  report={report}
+                  section={activeSection}
                 />
               ) : null}
             </div>
           </section>
+          {error ? <p className="error-text">{error}</p> : null}
         </section>
       ) : (
         <>
           {view === "home" ? <HomeOptions onSingleUpload={() => setView("single")} /> : null}
           {view === "single" ? (
             <SingleUploadScreen
-              aiLoading={aiLoading}
+              aiLoading={false}
               analysisStage={analysisStage}
               authenticatedFile={authenticatedFile}
               candidateId={candidateId}

@@ -319,7 +319,8 @@ export function buildReport(input: ReportInput): LaisrReport {
     linguisticProfile,
     comparativeProfile,
     aiReview: input.aiReview,
-    extractedTextPreview: input.doc.text
+    extractedTextPreview: input.doc.text,
+    authenticatedTextPreview: input.authenticatedDoc?.text
   };
 }
 

@@ -3,6 +3,7 @@
 import {
   AlertTriangle,
   ArrowLeft,
+  Bot,
   Brain,
   CheckCircle2,
   Clock,
@@ -26,7 +27,8 @@ import {
   plainFindingSummary,
   severityLabel
 } from "@/lib/laisr/finding-presentation";
-import type { LaisrReport } from "@/lib/laisr/types";
+import type { AlgorithmicSection } from "@/lib/laisr/sections";
+import type { LaisrReport, SectionAiReview } from "@/lib/laisr/types";
 export function HomeOptions({ onSingleUpload }: { onSingleUpload: () => void }) {
   return (
     <section className="home-grid">
@@ -191,6 +193,178 @@ export function SummaryItem({ label, value }: { label: string; value: string }) 
   );
 }
 
+export function SectionReviewTab({
+  aiConfigured,
+  aiLoading,
+  aiReview,
+  onRunAi,
+  report,
+  section
+}: {
+  aiConfigured: boolean;
+  aiLoading: boolean;
+  aiReview?: SectionAiReview;
+  onRunAi: () => void;
+  report: LaisrReport;
+  section: AlgorithmicSection;
+}) {
+  const effectiveJudgement = section.id === "ai_prose" && aiReview
+    ? aiConcernLabel(aiReview.concern)
+    : section.judgement;
+
+  return (
+    <div className="section-review">
+      <SectionHeader
+        aiConfigured={aiConfigured}
+        aiLoading={aiLoading}
+        aiReview={aiReview}
+        judgement={effectiveJudgement}
+        onRunAi={onRunAi}
+        section={section}
+      />
+
+      {section.id === "metadata" ? (
+        <MetadataSection report={report} section={section} />
+      ) : null}
+      {section.id === "textual" ? (
+        <TextualSection report={report} section={section} />
+      ) : null}
+      {section.id === "comparative" ? (
+        <ComparativeSection report={report} section={section} />
+      ) : null}
+      {section.id === "ai_prose" ? (
+        <AiProseSection report={report} />
+      ) : null}
+    </div>
+  );
+}
+
+export function SummaryRecommendationTab({
+  aiConfigured,
+  aiLoading,
+  aiReview,
+  includeVivaInPdf,
+  onDownloadJson,
+  onDownloadPdf,
+  onRunAi,
+  onToggleViva,
+  pdfLoading,
+  report,
+  section
+}: {
+  aiConfigured: boolean;
+  aiLoading: boolean;
+  aiReview?: SectionAiReview;
+  includeVivaInPdf: boolean;
+  onDownloadJson: () => void;
+  onDownloadPdf: () => void;
+  onRunAi: () => void;
+  onToggleViva: (value: boolean) => void;
+  pdfLoading: boolean;
+  report: LaisrReport;
+  section: AlgorithmicSection;
+}) {
+  const vivaRecommended =
+    report.summary.recommendation === "Viva recommended" ||
+    report.summary.recommendation === "Strong viva recommended";
+
+  return (
+    <div className="section-review">
+      <SectionHeader
+        aiConfigured={aiConfigured}
+        aiLoading={aiLoading}
+        aiReview={aiReview}
+        judgement={section.judgement}
+        onRunAi={onRunAi}
+        section={section}
+      />
+
+      <section className="panel">
+        <h2>
+          <AlertTriangle size={18} />
+          Outcome scale
+        </h2>
+        <div className="outcome-ladder">
+          {OUTCOMES.map((outcome) => (
+            <div
+              className={
+                outcome.label === report.summary.recommendation
+                  ? `outcome-step active ${outcome.tone}`
+                  : `outcome-step faded ${outcome.tone}`
+              }
+              key={outcome.label}
+            >
+              <span>{outcome.label}</span>
+              <p>{outcome.description}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="panel reasoning-panel">
+        <h2>
+          <CheckCircle2 size={18} />
+          Deterministic recommendation
+        </h2>
+        <p>{section.summary}</p>
+        <p>{report.assessment}</p>
+      </section>
+
+      <section className="panel">
+        <div className="judgement-header">
+          <h2>
+            <Download size={18} />
+            Report export
+          </h2>
+          {vivaRecommended ? (
+            <label className="toggle-row">
+              <input
+                checked={includeVivaInPdf}
+                type="checkbox"
+                onChange={(event) => onToggleViva(event.target.checked)}
+              />
+              Include viva questions in PDF
+            </label>
+          ) : null}
+        </div>
+
+        <div className="report-actions solid">
+          <button className="primary-button" type="button" disabled={pdfLoading} onClick={onDownloadPdf}>
+            {pdfLoading ? <Loader2 className="spin" size={18} /> : <Download size={18} />}
+            Download PDF
+          </button>
+          <button className="outline-button" type="button" onClick={onDownloadJson}>
+            JSON
+          </button>
+        </div>
+      </section>
+
+      {vivaRecommended ? (
+        <section className="panel">
+          <h2>
+            <FileQuestion size={18} />
+            Viva options
+          </h2>
+          <details className="viva-details">
+            <summary>
+              Suggested viva questions
+              <span>{report.vivaQuestions.length} generated</span>
+            </summary>
+            <div className="question-list">
+              {report.vivaQuestions.map((question, index) => (
+                <div className="question" key={`${question.question}-${index}`}>
+                  <strong>{index + 1}. {question.question}</strong>
+                  <p>{question.rationale}</p>
+                </div>
+              ))}
+            </div>
+          </details>
+        </section>
+      ) : null}
+    </div>
+  );
+}
+
 export function ProgressRail({
   hasAuthenticatedSample,
   stage
@@ -237,6 +411,191 @@ export function ProgressRail({
       ))}
     </div>
   );
+}
+
+function SectionHeader({
+  aiConfigured,
+  aiLoading,
+  aiReview,
+  judgement,
+  onRunAi,
+  section
+}: {
+  aiConfigured: boolean;
+  aiLoading: boolean;
+  aiReview?: SectionAiReview;
+  judgement: string;
+  onRunAi: () => void;
+  section: AlgorithmicSection;
+}) {
+  return (
+    <section className={`panel section-intro tone-${section.tone}`}>
+      <div>
+        <p className="eyebrow">{section.available ? "Section judgement" : "Optional section"}</p>
+        <h2>{section.label}</h2>
+        <p>{section.description}</p>
+      </div>
+      <div className="section-actions">
+        <mark className={`section-judgement tone-${section.tone}`}>{judgement}</mark>
+        <button
+          className="ai-review-button"
+          type="button"
+          disabled={!aiConfigured || aiLoading || !section.available}
+          onClick={onRunAi}
+          title={aiConfigured ? "Ask AI for a scoped second opinion" : "OPENAI_API_KEY is not configured"}
+        >
+          {aiLoading ? <Loader2 className="spin" size={16} /> : <span aria-hidden="true">🤖</span>}
+          <span>{aiLoading ? "Reviewing" : "AI"}</span>
+        </button>
+      </div>
+      <p className="section-summary">{section.summary}</p>
+      {aiReview ? <SectionAiPanel review={aiReview} /> : null}
+    </section>
+  );
+}
+
+function SectionAiPanel({ review }: { review: SectionAiReview }) {
+  return (
+    <div className={`section-ai-panel concern-${review.concern}`}>
+      <strong>AI scoped opinion: {aiConcernLabel(review.concern)}</strong>
+      <p>{review.opinion}</p>
+    </div>
+  );
+}
+
+function MetadataSection({
+  report,
+  section
+}: {
+  report: LaisrReport;
+  section: AlgorithmicSection;
+}) {
+  return (
+    <div className="findings-stack">
+      <section className="panel">
+        <h2>
+          <FileSearch size={18} />
+          File facts
+        </h2>
+        <div className="metadata-grid">
+          <SummaryItem label="Creator" value={report.metadata.creator} />
+          <SummaryItem label="Last editor" value={report.metadata.lastModifiedBy} />
+          <SummaryItem label="Revision" value={report.metadata.revision} />
+          <SummaryItem label="Application" value={report.metadata.application} />
+          <SummaryItem label="Template" value={report.metadata.template} />
+          <SummaryItem label="Company" value={report.metadata.company} />
+        </div>
+      </section>
+      <SectionFindings findings={section.findings} emptyText="No metadata or file-forensic indicators were detected." />
+    </div>
+  );
+}
+
+function TextualSection({
+  report,
+  section
+}: {
+  report: LaisrReport;
+  section: AlgorithmicSection;
+}) {
+  const [mode, setMode] = useState<"reader" | "map" | "findings">("reader");
+
+  return (
+    <div className="findings-stack">
+      <section className="panel evidence-overview">
+        <div className="panel-heading-row">
+          <h2>
+            <SearchCheck size={18} />
+            Locate issues in the document
+          </h2>
+          <div className="segmented-control" aria-label="Textual view mode">
+            <button className={mode === "reader" ? "active" : ""} type="button" onClick={() => setMode("reader")}>
+              Document
+            </button>
+            <button className={mode === "map" ? "active" : ""} type="button" onClick={() => setMode("map")}>
+              Style map
+            </button>
+            <button className={mode === "findings" ? "active" : ""} type="button" onClick={() => setMode("findings")}>
+              Findings
+            </button>
+          </div>
+        </div>
+        {mode === "reader" ? <DocumentAnnotationView report={report} findings={section.findings} /> : null}
+        {mode === "map" ? <LinguisticMap report={report} /> : null}
+        {mode === "findings" ? <SectionFindings findings={section.findings} emptyText="No textual, tone, or style indicators were detected." /> : null}
+      </section>
+    </div>
+  );
+}
+
+function ComparativeSection({
+  report,
+  section
+}: {
+  report: LaisrReport;
+  section: AlgorithmicSection;
+}) {
+  return (
+    <div className="findings-stack">
+      <ComparativePanel report={report} />
+      <SectionFindings findings={section.findings} emptyText="No authenticated-sample comparison indicators were detected." />
+    </div>
+  );
+}
+
+function AiProseSection({ report }: { report: LaisrReport }) {
+  return (
+    <section className="panel reasoning-panel">
+      <h2>
+        <Bot size={18} />
+        Text-only AI opinion
+      </h2>
+      <p>
+        This optional section sends only the visible essay text to the model. It does not include metadata,
+        XML, RSIDs, deterministic findings, or authenticated-writing comparison data.
+      </p>
+      <p className="muted">
+        The submitted text preview contains {report.summary.wordCount} words. Run the AI button above to ask whether
+        the prose itself suggests AI use or AI-assisted rewriting.
+      </p>
+    </section>
+  );
+}
+
+function SectionFindings({
+  emptyText,
+  findings
+}: {
+  emptyText: string;
+  findings: LaisrReport["findings"];
+}) {
+  if (findings.length === 0) {
+    return (
+      <section className="panel">
+        <p className="muted">{emptyText}</p>
+      </section>
+    );
+  }
+
+  return (
+    <div className="finding-list">
+      {findings.map((finding) => (
+        <FindingCard finding={finding} key={finding.id} />
+      ))}
+    </div>
+  );
+}
+
+function aiConcernLabel(concern: SectionAiReview["concern"]) {
+  return concern === "high"
+    ? "High concern"
+    : concern === "moderate"
+      ? "Moderate concern"
+      : concern === "low"
+        ? "Low concern"
+        : concern === "not_run"
+          ? "Not run"
+          : "Unavailable";
 }
 
 export function EvidenceTab({
@@ -321,13 +680,20 @@ export function EvidenceChecklist({ report }: { report: LaisrReport }) {
   );
 }
 
-export function DocumentAnnotationView({ report }: { report: LaisrReport }) {
+export function DocumentAnnotationView({
+  findings,
+  report
+}: {
+  findings?: LaisrReport["findings"];
+  report: LaisrReport;
+}) {
   const paragraphs = report.extractedTextPreview
     .split(/\n{2,}/)
     .map((paragraph) => paragraph.trim())
     .filter(Boolean);
-  const paragraphAnnotations = report.findings.filter((finding) => getFindingParagraphRange(finding, paragraphs.length));
-  const fileAnnotations = report.findings.filter((finding) => !getFindingParagraphRange(finding, paragraphs.length));
+  const scopedFindings = findings || report.findings;
+  const paragraphAnnotations = scopedFindings.filter((finding) => getFindingParagraphRange(finding, paragraphs.length));
+  const fileAnnotations = scopedFindings.filter((finding) => !getFindingParagraphRange(finding, paragraphs.length));
 
   return (
     <div className="annotation-layout">

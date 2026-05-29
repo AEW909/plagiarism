@@ -27,20 +27,12 @@ export async function POST(request: Request) {
       subject,
       aiReview: {
         enabled: Boolean(process.env.OPENAI_API_KEY),
-        status: process.env.OPENAI_API_KEY ? "pending" : "not_configured",
+        status: "not_configured",
         evidenceConcern: "not_run",
-        evidenceOpinion: process.env.OPENAI_API_KEY
-          ? "Text-only AI evidence review is still running."
-          : "Text-only AI evidence review is not configured.",
-        opinion: process.env.OPENAI_API_KEY
-          ? "Deterministic evidence is ready. AI evidence synthesis is still running."
-          : "AI analysis is not configured. Add OPENAI_API_KEY to enable the text-only review and synthesis layers.",
-        counterArgument: process.env.OPENAI_API_KEY
-          ? "The AI counter-position will appear when the AI review completes."
-          : "The algorithmic review remains available without AI analysis.",
-        assessment: process.env.OPENAI_API_KEY
-          ? "The final AI-assisted evidence weighing will update shortly."
-          : "No AI opinion was generated for this report.",
+        evidenceOpinion: "AI reviews now run on demand inside each section.",
+        opinion: "The algorithmic review is complete. Use the robot buttons for optional, scoped AI opinions.",
+        counterArgument: "The algorithmic review remains available without AI analysis.",
+        assessment: "No AI opinion was generated automatically for this report.",
         vivaQuestions: []
       }
     });

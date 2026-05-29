@@ -122,6 +122,17 @@ export type VivaQuestion = {
   linkedFinding?: string;
 };
 
+export type ReviewSectionId = "metadata" | "textual" | "comparative" | "ai_prose" | "summary";
+
+export type SectionConcern = "not_run" | "low" | "moderate" | "high" | "unavailable";
+
+export type SectionAiReview = {
+  sectionId: ReviewSectionId;
+  status: "completed" | "failed";
+  concern: SectionConcern;
+  opinion: string;
+};
+
 export type LaisrReport = {
   summary: AnalysisSummary;
   metadata: DocumentMetadata;
@@ -135,4 +146,5 @@ export type LaisrReport = {
   comparativeProfile: ComparativeProfile;
   aiReview: AiReview;
   extractedTextPreview: string;
+  authenticatedTextPreview?: string;
 };
