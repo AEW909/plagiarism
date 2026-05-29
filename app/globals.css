@@ -546,6 +546,12 @@ input:focus {
   color: var(--accent-strong);
 }
 
+.primary-button.light {
+  border-color: rgba(255, 255, 255, 0.36);
+  background: #fff;
+  color: var(--accent-strong);
+}
+
 .tab-panel,
 .reasoning-stack,
 .section-review {
@@ -667,6 +673,91 @@ input:focus {
 .section-ai-panel p {
   color: var(--ink);
   line-height: 1.55;
+}
+
+.modal-backdrop {
+  position: fixed;
+  z-index: 50;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(13, 33, 55, 0.38);
+}
+
+.summary-modal {
+  display: grid;
+  width: min(100%, 640px);
+  max-height: min(760px, 92vh);
+  overflow: auto;
+  gap: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 20px;
+  background: var(--surface);
+  box-shadow: 0 22px 70px rgba(13, 33, 55, 0.24);
+}
+
+.modal-heading,
+.modal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.modal-heading h2,
+.modal-heading p {
+  margin: 0;
+}
+
+.modal-section {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+  background: var(--surface-strong);
+}
+
+.modal-section > strong {
+  color: var(--ink);
+}
+
+.modal-section p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.modal-checks {
+  display: grid;
+  gap: 8px;
+}
+
+.modal-check {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  border-radius: 8px;
+  padding: 10px;
+  background: #fff;
+}
+
+.modal-check input {
+  margin-top: 3px;
+  accent-color: var(--accent);
+}
+
+.modal-check span {
+  display: grid;
+  gap: 3px;
+}
+
+.modal-check small {
+  color: var(--muted);
+  font-weight: 800;
 }
 
 .evidence-overview {

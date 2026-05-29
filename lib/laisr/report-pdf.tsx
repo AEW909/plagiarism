@@ -206,8 +206,9 @@ function LaisrPdf({
   report: LaisrReport;
 }) {
   const groupedFindings = groupFindings(report.findings);
-  const judgementReady = report.aiReview.status === "completed";
-  const coverOutcome = judgementReady ? report.summary.recommendation : "Final judgement pending AI review";
+  const finalRecommendation = report.finalRecommendation;
+  const judgementReady = Boolean(finalRecommendation);
+  const coverOutcome = finalRecommendation?.recommendation || "Final recommendation not generated";
 
   return (
     <Document
@@ -224,7 +225,7 @@ function LaisrPdf({
           </Text>
         </View>
         <View style={styles.coverBody}>
-          <Text style={[styles.badge, { backgroundColor: judgementReady ? recommendationColour(report.summary.recommendation) : colours.muted }]}>
+          <Text style={[styles.badge, { backgroundColor: finalRecommendation ? recommendationColour(finalRecommendation.recommendation) : colours.muted }]}>
             {coverOutcome}
           </Text>
           <MetadataRows
@@ -291,9 +292,9 @@ function LaisrPdf({
         <Text style={styles.paragraph}>{report.aiReview.counterArgument}</Text>
         <Text style={styles.sectionBanner}>Which Argument Holds Most Water</Text>
         <Text style={styles.paragraph}>
-          {report.aiReview.status === "completed"
-            ? report.aiReview.assessment
-            : "Final judgement is not available until the AI weighing step has completed."}
+          {finalRecommendation
+            ? `${finalRecommendation.recommendation} (${finalRecommendation.concernScore}/10). ${finalRecommendation.rationale}`
+            : "Final recommendation was not generated before export."}
         </Text>
       </ReportPage>
 
@@ -333,14 +334,15 @@ function ReportPage({
 }
 
 function SummaryGrid({ report }: { report: LaisrReport }) {
-  const judgementReady = report.aiReview.status === "completed";
+  const finalRecommendation = report.finalRecommendation;
 
   return (
     <View style={styles.summaryGrid}>
       <SummaryBox
-        label={judgementReady ? "Recommendation" : "Status"}
-        value={judgementReady ? report.summary.recommendation : "Judgement pending"}
+        label={finalRecommendation ? "Recommendation" : "Status"}
+        value={finalRecommendation ? finalRecommendation.recommendation : "Recommendation not generated"}
       />
+      <SummaryBox label="Concern" value={finalRecommendation ? `${finalRecommendation.concernScore}/10` : "N/A"} />
       <SummaryBox label="Serious/Critical" value={String(report.summary.seriousCount)} />
       <SummaryBox label="Notable" value={String(report.summary.notableCount)} />
     </View>

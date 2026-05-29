@@ -130,7 +130,17 @@ export type SectionAiReview = {
   sectionId: ReviewSectionId;
   status: "completed" | "failed";
   concern: SectionConcern;
+  concernScore: number;
   opinion: string;
+};
+
+export type FinalRecommendation = {
+  source: "algorithmic" | "ai_assisted";
+  recommendation: AnalysisSummary["recommendation"];
+  concernScore: number;
+  rationale: string;
+  includedAiSections: ReviewSectionId[];
+  includedFinalAiOpinion: boolean;
 };
 
 export type LaisrReport = {
@@ -147,4 +157,5 @@ export type LaisrReport = {
   aiReview: AiReview;
   extractedTextPreview: string;
   authenticatedTextPreview?: string;
+  finalRecommendation?: FinalRecommendation;
 };

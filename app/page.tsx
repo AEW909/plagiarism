@@ -5,7 +5,6 @@ import {
   Bot,
   FileSearch,
   FileText,
-  Layers,
   Scale,
   ShieldCheck,
   UserCheck
@@ -16,11 +15,13 @@ import {
   SectionReviewTab,
   SingleUploadScreen,
   SummaryItem,
+  SummaryCreationModal,
   SummaryRecommendationTab,
   TabButton
 } from "@/components/laisr/app-sections";
+import { buildLocalFinalRecommendation } from "@/lib/laisr/final-recommendation";
 import { buildAlgorithmicSections, buildSummarySection } from "@/lib/laisr/sections";
-import type { LaisrReport, ReviewSectionId, SectionAiReview } from "@/lib/laisr/types";
+import type { FinalRecommendation, LaisrReport, ReviewSectionId, SectionAiReview } from "@/lib/laisr/types";
 
 type ReportTab = ReviewSectionId;
 type AppView = "home" | "single";
@@ -51,7 +52,10 @@ export default function Home() {
     model: string;
   } | null>(null);
   const [sectionAiReviews, setSectionAiReviews] = useState<Partial<Record<ReviewSectionId, SectionAiReview>>>({});
-  const [sectionAiLoading, setSectionAiLoading] = useState<ReviewSectionId | null>(null);
+  const [sectionAiLoading, setSectionAiLoading] = useState<Partial<Record<ReviewSectionId, boolean>>>({});
+  const [finalRecommendation, setFinalRecommendation] = useState<FinalRecommendation | null>(null);
+  const [summaryModalOpen, setSummaryModalOpen] = useState(false);
+  const [summaryGenerating, setSummaryGenerating] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -92,6 +96,7 @@ export default function Home() {
     setError("");
     setReport(null);
     setSectionAiReviews({});
+    setFinalRecommendation(null);
 
     const formData = new FormData();
     formData.append("file", file);
@@ -128,7 +133,10 @@ export default function Home() {
       return;
     }
 
-    setSectionAiLoading(sectionId);
+    setSectionAiLoading((current) => ({
+      ...current,
+      [sectionId]: true
+    }));
     setError("");
 
     try {
@@ -159,11 +167,65 @@ export default function Home() {
           sectionId,
           status: "failed",
           concern: "unavailable",
+          concernScore: 1,
           opinion: aiError instanceof Error ? aiError.message : "AI section review failed."
         }
       }));
     } finally {
-      setSectionAiLoading(null);
+      setSectionAiLoading((current) => ({
+        ...current,
+        [sectionId]: false
+      }));
+    }
+  }
+
+  async function createFinalRecommendation({
+    includeFinalAiOpinion,
+    selectedAiSectionIds
+  }: {
+    includeFinalAiOpinion: boolean;
+    selectedAiSectionIds: ReviewSectionId[];
+  }) {
+    if (!report) {
+      return;
+    }
+
+    const selectedAiReviews = selectedAiSectionIds
+      .map((sectionId) => sectionAiReviews[sectionId])
+      .filter((review): review is SectionAiReview => Boolean(review && review.status === "completed"));
+
+    setSummaryGenerating(true);
+    setError("");
+
+    try {
+      if (includeFinalAiOpinion) {
+        const response = await fetch("/api/ai/final", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            report,
+            selectedAiReviews
+          })
+        });
+        const payload = await response.json();
+
+        if (!response.ok) {
+          throw new Error(payload.error || "Final AI recommendation failed.");
+        }
+
+        setFinalRecommendation(payload);
+      } else {
+        setFinalRecommendation(buildLocalFinalRecommendation(report, selectedAiReviews));
+      }
+
+      setSummaryModalOpen(false);
+      setActiveTab("summary");
+    } catch (summaryError) {
+      setError(summaryError instanceof Error ? summaryError.message : "Unable to create final recommendation.");
+    } finally {
+      setSummaryGenerating(false);
     }
   }
 
@@ -171,6 +233,10 @@ export default function Home() {
     if (!report) {
       return;
     }
+
+    const exportReport = finalRecommendation
+      ? { ...report, finalRecommendation }
+      : report;
 
     setPdfLoading(true);
     setError("");
@@ -182,7 +248,7 @@ export default function Home() {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          report,
+          report: exportReport,
           includeVivaQuestions: includeVivaInPdf
         })
       });
@@ -196,7 +262,7 @@ export default function Home() {
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `${report.summary.fileName.replace(/\.docx$/i, "")}_laisr_report.pdf`;
+      link.download = `${exportReport.summary.fileName.replace(/\.docx$/i, "")}_laisr_report.pdf`;
       link.click();
       URL.revokeObjectURL(url);
     } catch (pdfError) {
@@ -211,13 +277,17 @@ export default function Home() {
       return;
     }
 
-    const blob = new Blob([JSON.stringify(report, null, 2)], {
+    const exportReport = finalRecommendation
+      ? { ...report, finalRecommendation }
+      : report;
+
+    const blob = new Blob([JSON.stringify(exportReport, null, 2)], {
       type: "application/json"
     });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `${report.summary.fileName.replace(/\.docx$/i, "")}_laisr_report.json`;
+    link.download = `${exportReport.summary.fileName.replace(/\.docx$/i, "")}_laisr_report.json`;
     link.click();
     URL.revokeObjectURL(url);
   }
@@ -232,6 +302,9 @@ export default function Home() {
     setAnalysisStage("idle");
     setActiveTab("metadata");
     setSectionAiReviews({});
+    setSectionAiLoading({});
+    setFinalRecommendation(null);
+    setSummaryModalOpen(false);
     setView("home");
   }
 
@@ -262,14 +335,18 @@ export default function Home() {
           <div className="recommendation">
             <div>
               <p className="eyebrow">
-                <Layers size={16} />
                 Sectioned review
               </p>
-              <strong>{summarySection?.judgement || report.summary.recommendation}</strong>
+              <strong>{finalRecommendation ? finalRecommendation.recommendation : "Evidence gathered"}</strong>
               <span>
-                Algorithmic findings are separated from optional AI opinions. Use each robot button only when that scoped AI view is wanted.
+                {finalRecommendation
+                  ? `Final concern score ${finalRecommendation.concernScore}/10.`
+                  : "No overall recommendation has been generated yet. Review the sections, then create the summary when the evidence is ready."}
               </span>
             </div>
+            <button className="primary-button light" type="button" onClick={() => setSummaryModalOpen(true)}>
+              View/Create Summary
+            </button>
           </div>
 
           <div className="summary-grid">
@@ -296,13 +373,13 @@ export default function Home() {
             <div className="tab-panel">
               {activeSection?.id === "summary" && summarySection ? (
                 <SummaryRecommendationTab
-                  aiConfigured={Boolean(aiConfig?.aiConfigured)}
-                  aiLoading={sectionAiLoading === "summary"}
-                  aiReview={sectionAiReviews.summary}
+                  completedAiReviews={Object.values(sectionAiReviews).filter((review): review is SectionAiReview => Boolean(review && review.status === "completed"))}
+                  finalRecommendation={finalRecommendation}
+                  generatingSummary={summaryGenerating}
+                  onCreateSummary={() => setSummaryModalOpen(true)}
                   includeVivaInPdf={includeVivaInPdf}
                   onDownloadJson={downloadJson}
                   onDownloadPdf={downloadPdf}
-                  onRunAi={() => runSectionAi("summary")}
                   onToggleViva={setIncludeVivaInPdf}
                   pdfLoading={pdfLoading}
                   report={report}
@@ -311,7 +388,7 @@ export default function Home() {
               ) : activeSection ? (
                 <SectionReviewTab
                   aiConfigured={Boolean(aiConfig?.aiConfigured)}
-                  aiLoading={sectionAiLoading === activeSection.id}
+                  aiLoading={Boolean(sectionAiLoading[activeSection.id])}
                   aiReview={sectionAiReviews[activeSection.id]}
                   onRunAi={() => runSectionAi(activeSection.id)}
                   report={report}
@@ -320,6 +397,15 @@ export default function Home() {
               ) : null}
             </div>
           </section>
+          {summaryModalOpen && summarySection ? (
+            <SummaryCreationModal
+              aiConfigured={Boolean(aiConfig?.aiConfigured)}
+              completedAiReviews={Object.values(sectionAiReviews).filter((review): review is SectionAiReview => Boolean(review && review.status === "completed"))}
+              generating={summaryGenerating}
+              onClose={() => setSummaryModalOpen(false)}
+              onCreate={createFinalRecommendation}
+            />
+          ) : null}
           {error ? <p className="error-text">{error}</p> : null}
         </section>
       ) : (

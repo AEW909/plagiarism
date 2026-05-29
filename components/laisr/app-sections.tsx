@@ -13,6 +13,7 @@ import {
   Files,
   FileText,
   Loader2,
+  Scale,
   SearchCheck,
   Upload,
   Users
@@ -28,7 +29,7 @@ import {
   severityLabel
 } from "@/lib/laisr/finding-presentation";
 import type { AlgorithmicSection } from "@/lib/laisr/sections";
-import type { LaisrReport, SectionAiReview } from "@/lib/laisr/types";
+import type { FinalRecommendation, LaisrReport, ReviewSectionId, SectionAiReview } from "@/lib/laisr/types";
 export function HomeOptions({ onSingleUpload }: { onSingleUpload: () => void }) {
   return (
     <section className="home-grid">
@@ -240,45 +241,72 @@ export function SectionReviewTab({
 }
 
 export function SummaryRecommendationTab({
-  aiConfigured,
-  aiLoading,
-  aiReview,
+  completedAiReviews,
+  finalRecommendation,
+  generatingSummary,
   includeVivaInPdf,
+  onCreateSummary,
   onDownloadJson,
   onDownloadPdf,
-  onRunAi,
   onToggleViva,
   pdfLoading,
   report,
   section
 }: {
-  aiConfigured: boolean;
-  aiLoading: boolean;
-  aiReview?: SectionAiReview;
+  completedAiReviews: SectionAiReview[];
+  finalRecommendation: FinalRecommendation | null;
+  generatingSummary: boolean;
   includeVivaInPdf: boolean;
+  onCreateSummary: () => void;
   onDownloadJson: () => void;
   onDownloadPdf: () => void;
-  onRunAi: () => void;
   onToggleViva: (value: boolean) => void;
   pdfLoading: boolean;
   report: LaisrReport;
   section: AlgorithmicSection;
 }) {
   const vivaRecommended =
-    report.summary.recommendation === "Viva recommended" ||
-    report.summary.recommendation === "Strong viva recommended";
+    finalRecommendation?.recommendation === "Viva recommended" ||
+    finalRecommendation?.recommendation === "Strong viva recommended";
 
   return (
     <div className="section-review">
-      <SectionHeader
-        aiConfigured={aiConfigured}
-        aiLoading={aiLoading}
-        aiReview={aiReview}
-        judgement={section.judgement}
-        onRunAi={onRunAi}
-        section={section}
-      />
+      <section className="panel section-intro tone-not_run">
+        <div>
+          <p className="eyebrow">Final step</p>
+          <h2>{section.label}</h2>
+          <p>{section.description}</p>
+        </div>
+        <div className="section-actions">
+          <button className="primary-button" type="button" disabled={generatingSummary} onClick={onCreateSummary}>
+            {generatingSummary ? <Loader2 className="spin" size={18} /> : <CheckCircle2 size={18} />}
+            {finalRecommendation ? "Update summary" : "View/Create Summary"}
+          </button>
+        </div>
+        <p className="section-summary">
+          {finalRecommendation
+            ? `${finalRecommendation.source === "ai_assisted" ? "AI-assisted" : "Deterministic"} final recommendation created with a concern score of ${finalRecommendation.concernScore}/10.`
+            : "No overall recommendation has been generated yet. This keeps the evidence-gathering stage separate from the final weighing stage."}
+        </p>
+      </section>
 
+      {!finalRecommendation ? (
+        <section className="panel reasoning-panel">
+          <h2>
+            <Scale size={18} />
+            Summary not created yet
+          </h2>
+          <p>
+            Review the section evidence first. When ready, create the final summary and choose which completed AI opinions,
+            if any, should be included in the final weighing.
+          </p>
+          <p className="muted">
+            Completed AI opinions available now: {completedAiReviews.length}.
+          </p>
+        </section>
+      ) : null}
+
+      {finalRecommendation ? (
       <section className="panel">
         <h2>
           <AlertTriangle size={18} />
@@ -288,7 +316,7 @@ export function SummaryRecommendationTab({
           {OUTCOMES.map((outcome) => (
             <div
               className={
-                outcome.label === report.summary.recommendation
+                outcome.label === finalRecommendation.recommendation
                   ? `outcome-step active ${outcome.tone}`
                   : `outcome-step faded ${outcome.tone}`
               }
@@ -300,15 +328,22 @@ export function SummaryRecommendationTab({
           ))}
         </div>
       </section>
+      ) : null}
 
+      {finalRecommendation ? (
       <section className="panel reasoning-panel">
         <h2>
           <CheckCircle2 size={18} />
-          Deterministic recommendation
+          Final recommendation
         </h2>
-        <p>{section.summary}</p>
-        <p>{report.assessment}</p>
+        <p>{finalRecommendation.rationale}</p>
+        <p className="muted">
+          Included AI section opinions: {finalRecommendation.includedAiSections.length
+            ? finalRecommendation.includedAiSections.map(sectionLabel).join(", ")
+            : "None"}. Final AI weighing: {finalRecommendation.includedFinalAiOpinion ? "included" : "not included"}.
+        </p>
       </section>
+      ) : null}
 
       <section className="panel">
         <div className="judgement-header">
@@ -329,7 +364,7 @@ export function SummaryRecommendationTab({
         </div>
 
         <div className="report-actions solid">
-          <button className="primary-button" type="button" disabled={pdfLoading} onClick={onDownloadPdf}>
+          <button className="primary-button" type="button" disabled={pdfLoading || !finalRecommendation} onClick={onDownloadPdf}>
             {pdfLoading ? <Loader2 className="spin" size={18} /> : <Download size={18} />}
             Download PDF
           </button>
@@ -361,6 +396,116 @@ export function SummaryRecommendationTab({
           </details>
         </section>
       ) : null}
+    </div>
+  );
+}
+
+export function SummaryCreationModal({
+  aiConfigured,
+  completedAiReviews,
+  generating,
+  onClose,
+  onCreate
+}: {
+  aiConfigured: boolean;
+  completedAiReviews: SectionAiReview[];
+  generating: boolean;
+  onClose: () => void;
+  onCreate: (options: {
+    includeFinalAiOpinion: boolean;
+    selectedAiSectionIds: ReviewSectionId[];
+  }) => void;
+}) {
+  const [selectedSections, setSelectedSections] = useState<ReviewSectionId[]>(
+    completedAiReviews.map((review) => review.sectionId)
+  );
+  const [includeFinalAiOpinion, setIncludeFinalAiOpinion] = useState(false);
+
+  function toggleSection(sectionId: ReviewSectionId) {
+    setSelectedSections((current) =>
+      current.includes(sectionId)
+        ? current.filter((item) => item !== sectionId)
+        : [...current, sectionId]
+    );
+  }
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <section className="summary-modal" role="dialog" aria-modal="true" aria-labelledby="summary-modal-title">
+        <div className="modal-heading">
+          <div>
+            <p className="eyebrow">Final weighing</p>
+            <h2 id="summary-modal-title">Create final summary</h2>
+          </div>
+          <button className="icon-button" type="button" onClick={onClose} aria-label="Close summary options">
+            ×
+          </button>
+        </div>
+
+        {completedAiReviews.length > 0 ? (
+          <div className="modal-section">
+            <strong>Completed AI opinions to include</strong>
+            <p>Select which completed section AI opinions should contribute their text and 1-10 concern scores.</p>
+            <div className="modal-checks">
+              {completedAiReviews.map((review) => (
+                <label className="modal-check" key={review.sectionId}>
+                  <input
+                    checked={selectedSections.includes(review.sectionId)}
+                    type="checkbox"
+                    onChange={() => toggleSection(review.sectionId)}
+                  />
+                  <span>
+                    <strong>{sectionLabel(review.sectionId)}</strong>
+                    <small>{aiConcernLabel(review.concern)} · {review.concernScore}/10</small>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="modal-section">
+            <strong>No completed AI section opinions yet</strong>
+            <p>
+              You can still create a final recommendation from the algorithmic section scores. No section AI text or
+              section AI scores will be included.
+            </p>
+          </div>
+        )}
+
+        <div className="modal-section">
+          <label className="modal-check">
+            <input
+              checked={includeFinalAiOpinion}
+              disabled={!aiConfigured}
+              type="checkbox"
+              onChange={(event) => setIncludeFinalAiOpinion(event.target.checked)}
+            />
+            <span>
+              <strong>Include AI final weighing opinion</strong>
+              <small>
+                {aiConfigured
+                  ? "AI will weigh the evidence summaries and selected AI opinions, without raw essay text."
+                  : "OPENAI_API_KEY is not configured, so this option is unavailable."}
+              </small>
+            </span>
+          </label>
+        </div>
+
+        <div className="modal-actions">
+          <button className="outline-button" type="button" disabled={generating} onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            className="primary-button"
+            type="button"
+            disabled={generating}
+            onClick={() => onCreate({ includeFinalAiOpinion, selectedAiSectionIds: selectedSections })}
+          >
+            {generating ? <Loader2 className="spin" size={18} /> : <CheckCircle2 size={18} />}
+            {includeFinalAiOpinion ? "Generate with AI" : "Create summary"}
+          </button>
+        </div>
+      </section>
     </div>
   );
 }
@@ -457,7 +602,7 @@ function SectionHeader({
 function SectionAiPanel({ review }: { review: SectionAiReview }) {
   return (
     <div className={`section-ai-panel concern-${review.concern}`}>
-      <strong>AI scoped opinion: {aiConcernLabel(review.concern)}</strong>
+      <strong>AI scoped opinion: {aiConcernLabel(review.concern)} · {review.concernScore}/10</strong>
       <p>{review.opinion}</p>
     </div>
   );
@@ -595,7 +740,27 @@ function aiConcernLabel(concern: SectionAiReview["concern"]) {
         ? "Low concern"
         : concern === "not_run"
           ? "Not run"
-          : "Unavailable";
+        : "Unavailable";
+}
+
+function sectionLabel(sectionId: ReviewSectionId) {
+  if (sectionId === "metadata") {
+    return "Metadata and file forensics";
+  }
+
+  if (sectionId === "textual") {
+    return "Textual anomalies, tone and style";
+  }
+
+  if (sectionId === "comparative") {
+    return "Authenticated writing comparison";
+  }
+
+  if (sectionId === "ai_prose") {
+    return "AI prose opinion";
+  }
+
+  return "Summary";
 }
 
 export function EvidenceTab({

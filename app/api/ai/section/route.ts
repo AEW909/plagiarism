@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { sectionPayload } from "@/lib/laisr/sections";
+import { clampScore } from "@/lib/laisr/final-recommendation";
 import type { LaisrReport, ReviewSectionId, SectionAiReview, SectionConcern } from "@/lib/laisr/types";
 
 export const runtime = "nodejs";
@@ -47,7 +48,7 @@ export async function POST(request: Request) {
           role: "user",
           content: JSON.stringify({
             task:
-              `${SECTION_PROMPTS[body.sectionId]} Return JSON only with keys concern and opinion. concern must be one of low, moderate, high, unavailable. The opinion should explain the strongest concern, the strongest innocent explanation, and what an examiner could ask or check next.`,
+              `${SECTION_PROMPTS[body.sectionId]} Return JSON only with keys concern, concernScore, and opinion. concern must be one of low, moderate, high, unavailable. concernScore must be an integer from 1 to 10, where 1 means no meaningful concern and 10 means strong concern. The opinion should explain the strongest concern, the strongest innocent explanation, and what an examiner could ask or check next.`,
             payload
           })
         }
@@ -64,6 +65,7 @@ export async function POST(request: Request) {
       sectionId: body.sectionId,
       status: "completed",
       concern: normaliseConcern(parsed.concern),
+      concernScore: clampScore(Number(parsed.concernScore)),
       opinion: typeof parsed.opinion === "string" && parsed.opinion.trim()
         ? parsed.opinion
         : "AI returned no section opinion."
