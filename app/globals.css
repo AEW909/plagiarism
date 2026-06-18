@@ -481,6 +481,117 @@ input:focus {
   font-weight: 800;
 }
 
+.workflow-guide {
+  display: grid;
+  gap: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 18px;
+  background: var(--surface);
+  box-shadow: 0 12px 34px rgba(32, 35, 31, 0.06);
+}
+
+.workflow-guide-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.workflow-guide-head h2,
+.workflow-guide-head p {
+  margin: 0;
+}
+
+.workflow-guide-head h2 {
+  margin-top: 3px;
+  font-size: 1.32rem;
+  letter-spacing: 0;
+}
+
+.workflow-guide-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.workflow-steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.workflow-step {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 9px;
+  align-items: start;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  background: var(--surface-strong);
+  color: var(--muted);
+}
+
+.workflow-step.current {
+  border-color: rgba(49, 95, 140, 0.34);
+  background: rgba(49, 95, 140, 0.08);
+  color: var(--ink);
+}
+
+.workflow-step.complete {
+  border-color: rgba(28, 107, 91, 0.22);
+  background: rgba(28, 107, 91, 0.08);
+  color: var(--ink);
+}
+
+.workflow-step.locked {
+  opacity: 0.55;
+}
+
+.workflow-step-index {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.workflow-step.current .workflow-step-index {
+  background: var(--blue);
+  color: #fff;
+}
+
+.workflow-step.complete .workflow-step-index {
+  background: var(--accent);
+  color: #fff;
+}
+
+.workflow-step strong,
+.workflow-step small {
+  display: block;
+}
+
+.workflow-step strong {
+  font-size: 0.9rem;
+}
+
+.workflow-step small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
 .summary-grid,
 .metadata-grid {
   display: grid;
@@ -1549,7 +1660,8 @@ input:focus {
   .home-grid,
   .summary-grid,
   .metadata-grid,
-  .tabs {
+  .tabs,
+  .workflow-steps {
     grid-template-columns: 1fr;
   }
 
@@ -1593,5 +1705,15 @@ input:focus {
   .judgement-header {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .workflow-guide-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .workflow-guide-actions,
+  .workflow-guide-actions .primary-button {
+    width: 100%;
   }
 }

@@ -529,6 +529,14 @@ function SectionHeader({
   onRunAi: () => void;
   section: AlgorithmicSection;
 }) {
+  const aiButtonLabel = aiLoading
+    ? "Reviewing"
+    : aiReview?.status === "failed"
+      ? "Retry AI"
+      : aiReview?.status === "completed"
+        ? "Rerun AI"
+        : "Run AI";
+
   return (
     <section className={`panel section-intro tone-${section.tone}`}>
       <div>
@@ -546,7 +554,7 @@ function SectionHeader({
           title={aiConfigured ? "Ask AI for a scoped second opinion" : "OPENAI_API_KEY is not configured"}
         >
           {aiLoading ? <Loader2 className="spin" size={16} /> : <span aria-hidden="true">🤖</span>}
-          <span>{aiLoading ? "Reviewing" : "AI"}</span>
+          <span>{aiButtonLabel}</span>
         </button>
       </div>
       <p className="section-summary">{section.summary}</p>

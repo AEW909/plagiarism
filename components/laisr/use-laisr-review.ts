@@ -7,6 +7,7 @@ import type { FinalRecommendation, LaisrReport, ReviewSectionId, SectionAiReview
 
 export type ReportTab = ReviewSectionId;
 export type AppView = "home" | "single";
+export type WorkflowStepId = "upload" | "evidence" | "ai_reviews" | "summary";
 
 export function useLaisrReview() {
   const [view, setView] = useState<AppView>("home");
@@ -62,6 +63,14 @@ export function useLaisrReview() {
   const completedAiReviews = Object.values(sectionAiReviews).filter(
     (review): review is SectionAiReview => Boolean(review && review.status === "completed")
   );
+  const aiReviewInProgress = Object.values(sectionAiLoading).some(Boolean);
+  const workflowStep: WorkflowStepId = !report
+    ? "upload"
+    : finalRecommendation
+      ? "summary"
+      : completedAiReviews.length > 0 || aiReviewInProgress
+        ? "ai_reviews"
+        : "evidence";
 
   async function analyseDocument() {
     if (!file) {
@@ -290,6 +299,7 @@ export function useLaisrReview() {
     activeSection,
     activeTab,
     aiConfigured: Boolean(aiConfig?.aiConfigured),
+    aiReviewInProgress,
     analysisStage,
     analyseDocument,
     authenticatedFile,
@@ -322,6 +332,7 @@ export function useLaisrReview() {
     summaryModalOpen,
     summarySection,
     view,
-    visibleTabs
+    visibleTabs,
+    workflowStep
   };
 }

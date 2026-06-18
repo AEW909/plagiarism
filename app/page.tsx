@@ -18,7 +18,7 @@ import {
   SummaryRecommendationTab
 } from "@/components/laisr/app-sections";
 import { useLaisrReview, type ReportTab } from "@/components/laisr/use-laisr-review";
-import { SummaryItem, TabButton } from "@/components/laisr/ui-primitives";
+import { SummaryItem, TabButton, WorkflowGuide, type WorkflowStep } from "@/components/laisr/ui-primitives";
 
 const TAB_ICONS: Record<ReportTab, ReactNode> = {
   metadata: <FileSearch size={17} />,
@@ -30,6 +30,12 @@ const TAB_ICONS: Record<ReportTab, ReactNode> = {
 
 export default function Home() {
   const review = useLaisrReview();
+  const workflowSteps = buildWorkflowSteps({
+    completedAiCount: review.completedAiReviews.length,
+    hasFinalRecommendation: Boolean(review.finalRecommendation),
+    hasReport: Boolean(review.report),
+    step: review.workflowStep
+  });
 
   return (
     <main className="shell">
@@ -53,20 +59,14 @@ export default function Home() {
 
       {review.report ? (
         <section className="report">
-          <div className="recommendation">
-            <div>
-              <p className="eyebrow">Sectioned review</p>
-              <strong>{review.finalRecommendation ? review.finalRecommendation.recommendation : "Evidence gathered"}</strong>
-              <span>
-                {review.finalRecommendation
-                  ? `Final concern score ${review.finalRecommendation.concernScore}/10.`
-                  : "No overall recommendation has been generated yet. Review the sections, then create the summary when the evidence is ready."}
-              </span>
-            </div>
-            <button className="primary-button light" type="button" onClick={() => review.setSummaryModalOpen(true)}>
-              View/Create Summary
+          <WorkflowGuide
+            steps={workflowSteps}
+            title={review.finalRecommendation ? review.finalRecommendation.recommendation : "Evidence gathered"}
+          >
+            <button className="primary-button" type="button" onClick={() => review.setSummaryModalOpen(true)}>
+              {review.finalRecommendation ? "Update summary" : "Create summary"}
             </button>
-          </div>
+          </WorkflowGuide>
 
           <div className="summary-grid">
             <SummaryItem label="File" value={review.report.summary.fileName} />
@@ -153,4 +153,49 @@ export default function Home() {
       )}
     </main>
   );
+}
+
+function buildWorkflowSteps({
+  completedAiCount,
+  hasFinalRecommendation,
+  hasReport,
+  step
+}: {
+  completedAiCount: number;
+  hasFinalRecommendation: boolean;
+  hasReport: boolean;
+  step: "upload" | "evidence" | "ai_reviews" | "summary";
+}): WorkflowStep[] {
+  return [
+    {
+      id: "upload",
+      label: "Upload",
+      description: hasReport ? "Document loaded" : "Choose a DOCX file",
+      status: hasReport ? "complete" : step === "upload" ? "current" : "available"
+    },
+    {
+      id: "evidence",
+      label: "Evidence",
+      description: hasReport ? "Review algorithmic findings" : "Available after upload",
+      status: !hasReport ? "locked" : step === "evidence" ? "current" : "complete"
+    },
+    {
+      id: "ai_reviews",
+      label: "AI reviews",
+      description: completedAiCount ? `${completedAiCount} completed` : "Optional scoped opinions",
+      status: !hasReport
+        ? "locked"
+        : hasFinalRecommendation
+          ? "complete"
+          : step === "ai_reviews"
+            ? "current"
+            : "available"
+    },
+    {
+      id: "summary",
+      label: "Summary",
+      description: hasFinalRecommendation ? "Recommendation created" : "Create when ready",
+      status: hasFinalRecommendation ? "complete" : step === "summary" ? "current" : hasReport ? "available" : "locked"
+    }
+  ];
 }
