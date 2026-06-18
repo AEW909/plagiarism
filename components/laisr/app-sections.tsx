@@ -757,6 +757,28 @@ export function EvidenceTab({
   );
 }
 
+export function DocumentReviewTab({ report }: { report: LaisrReport }) {
+  return (
+    <div className="findings-stack">
+      <article className="panel evidence-overview">
+        <div className="panel-heading-row">
+          <div>
+            <h2>
+              <SearchCheck size={18} />
+              Document review
+            </h2>
+            <p className="muted">
+              Read the extracted text with linked annotations. File-level evidence appears separately because metadata,
+              XML, and embedded-object signals do not always attach to a visible paragraph.
+            </p>
+          </div>
+        </div>
+        <DocumentAnnotationView report={report} />
+      </article>
+    </div>
+  );
+}
+
 export function EvidenceChecklist({ report }: { report: LaisrReport }) {
   return (
     <div className="checklist">

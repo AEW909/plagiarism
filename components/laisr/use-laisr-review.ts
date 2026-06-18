@@ -5,9 +5,9 @@ import { buildLocalFinalRecommendation } from "@/lib/laisr/final-recommendation"
 import { buildAlgorithmicSections, buildSummarySection } from "@/lib/laisr/sections";
 import type { FinalRecommendation, LaisrReport, ReviewSectionId, SectionAiReview } from "@/lib/laisr/types";
 
-export type ReportTab = ReviewSectionId;
+export type ReportTab = "document" | ReviewSectionId;
 export type AppView = "home" | "single";
-export type WorkflowStepId = "upload" | "evidence" | "ai_reviews" | "summary";
+export type WorkflowStepId = "upload" | "document_review" | "evidence" | "ai_reviews" | "summary";
 
 export function useLaisrReview() {
   const [view, setView] = useState<AppView>("home");
@@ -59,7 +59,9 @@ export function useLaisrReview() {
     const base = reportSections.filter((section) => section.id !== "comparative" || section.available);
     return summarySection ? [...base, summarySection] : base;
   }, [reportSections, summarySection]);
-  const activeSection = visibleTabs.find((section) => section.id === activeTab) ?? visibleTabs[0];
+  const activeSection = activeTab === "document"
+    ? undefined
+    : visibleTabs.find((section) => section.id === activeTab) ?? visibleTabs[0];
   const completedAiReviews = Object.values(sectionAiReviews).filter(
     (review): review is SectionAiReview => Boolean(review && review.status === "completed")
   );
@@ -70,7 +72,9 @@ export function useLaisrReview() {
       ? "summary"
       : completedAiReviews.length > 0 || aiReviewInProgress
         ? "ai_reviews"
-        : "evidence";
+        : activeTab === "document"
+          ? "document_review"
+          : "evidence";
 
   async function analyseDocument() {
     if (!file) {
@@ -105,7 +109,7 @@ export function useLaisrReview() {
       }
 
       setReport(payload);
-      setActiveTab("metadata");
+      setActiveTab("document");
       setAnalysisStage("complete");
     } catch (analysisError) {
       setError(analysisError instanceof Error ? analysisError.message : "Analysis failed.");
@@ -287,7 +291,7 @@ export function useLaisrReview() {
     setSubject("");
     setError("");
     setAnalysisStage("idle");
-    setActiveTab("metadata");
+    setActiveTab("document");
     setSectionAiReviews({});
     setSectionAiLoading({});
     setFinalRecommendation(null);

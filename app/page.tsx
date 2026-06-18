@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 import {
+  DocumentReviewTab,
   HomeOptions,
   SectionReviewTab,
   SingleUploadScreen,
@@ -21,8 +22,9 @@ import { useLaisrReview, type ReportTab } from "@/components/laisr/use-laisr-rev
 import { SummaryItem, TabButton, WorkflowGuide, type WorkflowStep } from "@/components/laisr/ui-primitives";
 
 const TAB_ICONS: Record<ReportTab, ReactNode> = {
+  document: <FileText size={17} />,
   metadata: <FileSearch size={17} />,
-  textual: <FileText size={17} />,
+  textual: <FileSearch size={17} />,
   comparative: <UserCheck size={17} />,
   ai_prose: <Bot size={17} />,
   summary: <Scale size={17} />
@@ -30,6 +32,9 @@ const TAB_ICONS: Record<ReportTab, ReactNode> = {
 
 export default function Home() {
   const review = useLaisrReview();
+  const reportTabs = review.report
+    ? [{ id: "document" as const, label: "Document Review" }, ...review.visibleTabs]
+    : [];
   const workflowSteps = buildWorkflowSteps({
     completedAiCount: review.completedAiReviews.length,
     hasFinalRecommendation: Boolean(review.finalRecommendation),
@@ -78,7 +83,7 @@ export default function Home() {
 
           <section className="tab-shell">
             <div className="tabs" role="tablist" aria-label="LAISR report sections">
-              {review.visibleTabs.map((section) => (
+              {reportTabs.map((section) => (
                 <TabButton
                   active={review.activeTab === section.id}
                   icon={TAB_ICONS[section.id]}
@@ -90,7 +95,9 @@ export default function Home() {
             </div>
 
             <div className="tab-panel">
-              {review.activeSection?.id === "summary" && review.summarySection ? (
+              {review.activeTab === "document" ? (
+                <DocumentReviewTab report={review.report} />
+              ) : review.activeSection?.id === "summary" && review.summarySection ? (
                 <SummaryRecommendationTab
                   completedAiReviews={review.completedAiReviews}
                   finalRecommendation={review.finalRecommendation}
@@ -109,7 +116,11 @@ export default function Home() {
                   aiConfigured={review.aiConfigured}
                   aiLoading={Boolean(review.sectionAiLoading[review.activeSection.id])}
                   aiReview={review.sectionAiReviews[review.activeSection.id]}
-                  onRunAi={() => review.runSectionAi(review.activeSection.id)}
+                  onRunAi={() => {
+                    if (review.activeSection) {
+                      review.runSectionAi(review.activeSection.id);
+                    }
+                  }}
                   report={review.report}
                   section={review.activeSection}
                 />
@@ -164,7 +175,7 @@ function buildWorkflowSteps({
   completedAiCount: number;
   hasFinalRecommendation: boolean;
   hasReport: boolean;
-  step: "upload" | "evidence" | "ai_reviews" | "summary";
+  step: "upload" | "document_review" | "evidence" | "ai_reviews" | "summary";
 }): WorkflowStep[] {
   return [
     {
@@ -174,10 +185,22 @@ function buildWorkflowSteps({
       status: hasReport ? "complete" : step === "upload" ? "current" : "available"
     },
     {
+      id: "document_review",
+      label: "Document review",
+      description: hasReport ? "Preview text and annotations" : "Available after upload",
+      status: !hasReport ? "locked" : step === "document_review" ? "current" : "complete"
+    },
+    {
       id: "evidence",
       label: "Evidence",
-      description: hasReport ? "Review algorithmic findings" : "Available after upload",
-      status: !hasReport ? "locked" : step === "evidence" ? "current" : "complete"
+      description: hasReport ? "Open forensic sections" : "Available after document review",
+      status: !hasReport
+        ? "locked"
+        : step === "document_review"
+          ? "available"
+          : step === "evidence"
+            ? "current"
+            : "complete"
     },
     {
       id: "ai_reviews",
