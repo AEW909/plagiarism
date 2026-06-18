@@ -30,6 +30,10 @@ import {
 } from "@/lib/laisr/finding-presentation";
 import type { AlgorithmicSection } from "@/lib/laisr/sections";
 import type { FinalRecommendation, LaisrReport, ReviewSectionId, SectionAiReview } from "@/lib/laisr/types";
+import {
+  OutcomeScale,
+  SummaryItem
+} from "./ui-primitives";
 export function HomeOptions({ onSingleUpload }: { onSingleUpload: () => void }) {
   return (
     <section className="home-grid">
@@ -160,40 +164,6 @@ export function SingleUploadScreen({
   );
 }
 
-export function TabButton({
-  active,
-  icon,
-  label,
-  onClick
-}: {
-  active: boolean;
-  icon: ReactNode;
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      aria-selected={active}
-      className={active ? "tab-button active" : "tab-button"}
-      role="tab"
-      type="button"
-      onClick={onClick}
-    >
-      {icon}
-      {label}
-    </button>
-  );
-}
-
-export function SummaryItem({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="summary-item">
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
-  );
-}
-
 export function SectionReviewTab({
   aiConfigured,
   aiLoading,
@@ -312,21 +282,7 @@ export function SummaryRecommendationTab({
           <AlertTriangle size={18} />
           Outcome scale
         </h2>
-        <div className="outcome-ladder">
-          {OUTCOMES.map((outcome) => (
-            <div
-              className={
-                outcome.label === finalRecommendation.recommendation
-                  ? `outcome-step active ${outcome.tone}`
-                  : `outcome-step faded ${outcome.tone}`
-              }
-              key={outcome.label}
-            >
-              <span>{outcome.label}</span>
-              <p>{outcome.description}</p>
-            </div>
-          ))}
-        </div>
+        <OutcomeScale activeRecommendation={finalRecommendation.recommendation} />
       </section>
       ) : null}
 
@@ -1009,21 +965,7 @@ export function JudgementTab({
           <AlertTriangle size={18} />
           Outcome scale
         </h2>
-        <div className="outcome-ladder">
-          {OUTCOMES.map((outcome) => (
-            <div
-              className={
-                judgementReady && outcome.label === report.summary.recommendation
-                  ? `outcome-step active ${outcome.tone}`
-                  : `outcome-step ${outcome.tone}`
-              }
-              key={outcome.label}
-            >
-              <span>{outcome.label}</span>
-              <p>{outcome.description}</p>
-            </div>
-          ))}
-        </div>
+        <OutcomeScale activeRecommendation={judgementReady ? report.summary.recommendation : undefined} />
       </section>
 
       <ReasoningBlock
@@ -1103,33 +1045,6 @@ export function JudgementTab({
     </div>
   );
 }
-
-const OUTCOMES: Array<{
-  label: LaisrReport["summary"]["recommendation"];
-  description: string;
-  tone: "clear" | "watch" | "moderate" | "high";
-}> = [
-  {
-    label: "No significant indicators detected",
-    description: "Checks completed without notable concern from the current evidence streams.",
-    tone: "clear"
-  },
-  {
-    label: "Examiner review recommended",
-    description: "Some indicators are present and should be read by an examiner before deciding next steps.",
-    tone: "watch"
-  },
-  {
-    label: "Viva recommended",
-    description: "Indicators are sufficient to make an authorship discussion proportionate.",
-    tone: "moderate"
-  },
-  {
-    label: "Strong viva recommended",
-    description: "Multiple or serious indicators cluster enough to prioritise viva preparation.",
-    tone: "high"
-  }
-];
 
 export function ReasoningBlock({
   body,

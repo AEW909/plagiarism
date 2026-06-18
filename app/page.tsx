@@ -9,22 +9,16 @@ import {
   ShieldCheck,
   UserCheck
 } from "lucide-react";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import {
   HomeOptions,
   SectionReviewTab,
   SingleUploadScreen,
-  SummaryItem,
   SummaryCreationModal,
-  SummaryRecommendationTab,
-  TabButton
+  SummaryRecommendationTab
 } from "@/components/laisr/app-sections";
-import { buildLocalFinalRecommendation } from "@/lib/laisr/final-recommendation";
-import { buildAlgorithmicSections, buildSummarySection } from "@/lib/laisr/sections";
-import type { FinalRecommendation, LaisrReport, ReviewSectionId, SectionAiReview } from "@/lib/laisr/types";
-
-type ReportTab = ReviewSectionId;
-type AppView = "home" | "single";
+import { useLaisrReview, type ReportTab } from "@/components/laisr/use-laisr-review";
+import { SummaryItem, TabButton } from "@/components/laisr/ui-primitives";
 
 const TAB_ICONS: Record<ReportTab, ReactNode> = {
   metadata: <FileSearch size={17} />,
@@ -35,280 +29,7 @@ const TAB_ICONS: Record<ReportTab, ReactNode> = {
 };
 
 export default function Home() {
-  const [view, setView] = useState<AppView>("home");
-  const [file, setFile] = useState<File | null>(null);
-  const [authenticatedFile, setAuthenticatedFile] = useState<File | null>(null);
-  const [candidateId, setCandidateId] = useState("");
-  const [subject, setSubject] = useState("");
-  const [report, setReport] = useState<LaisrReport | null>(null);
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [pdfLoading, setPdfLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<ReportTab>("metadata");
-  const [includeVivaInPdf, setIncludeVivaInPdf] = useState(true);
-  const [analysisStage, setAnalysisStage] = useState<"idle" | "deterministic" | "ai" | "complete">("idle");
-  const [aiConfig, setAiConfig] = useState<{
-    aiConfigured: boolean;
-    model: string;
-  } | null>(null);
-  const [sectionAiReviews, setSectionAiReviews] = useState<Partial<Record<ReviewSectionId, SectionAiReview>>>({});
-  const [sectionAiLoading, setSectionAiLoading] = useState<Partial<Record<ReviewSectionId, boolean>>>({});
-  const [finalRecommendation, setFinalRecommendation] = useState<FinalRecommendation | null>(null);
-  const [summaryModalOpen, setSummaryModalOpen] = useState(false);
-  const [summaryGenerating, setSummaryGenerating] = useState(false);
-
-  useEffect(() => {
-    let active = true;
-
-    fetch("/api/config")
-      .then((response) => response.json())
-      .then((payload) => {
-        if (active) {
-          setAiConfig(payload);
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setAiConfig({ aiConfigured: false, model: "unknown" });
-        }
-      });
-
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  const reportSections = useMemo(() => report ? buildAlgorithmicSections(report) : [], [report]);
-  const summarySection = useMemo(() => report ? buildSummarySection(report) : null, [report]);
-  const visibleTabs = useMemo(() => {
-    const base = reportSections.filter((section) => section.id !== "comparative" || section.available);
-    return summarySection ? [...base, summarySection] : base;
-  }, [reportSections, summarySection]);
-
-  async function analyseDocument() {
-    if (!file) {
-      setError("Choose a .docx file first.");
-      return;
-    }
-
-    setLoading(true);
-    setAnalysisStage("deterministic");
-    setError("");
-    setReport(null);
-    setSectionAiReviews({});
-    setFinalRecommendation(null);
-
-    const formData = new FormData();
-    formData.append("file", file);
-    if (authenticatedFile) {
-      formData.append("authenticatedFile", authenticatedFile);
-    }
-    formData.append("candidateId", candidateId);
-    formData.append("subject", subject);
-
-    try {
-      const response = await fetch("/api/analyse", {
-        method: "POST",
-        body: formData
-      });
-      const payload = await response.json();
-
-      if (!response.ok) {
-        throw new Error(payload.error || "Analysis failed.");
-      }
-
-      setReport(payload);
-      setActiveTab("metadata");
-      setAnalysisStage("complete");
-    } catch (analysisError) {
-      setError(analysisError instanceof Error ? analysisError.message : "Analysis failed.");
-      setAnalysisStage("idle");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function runSectionAi(sectionId: ReviewSectionId) {
-    if (!report) {
-      return;
-    }
-
-    setSectionAiLoading((current) => ({
-      ...current,
-      [sectionId]: true
-    }));
-    setError("");
-
-    try {
-      const response = await fetch("/api/ai/section", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          report,
-          sectionId
-        })
-      });
-      const payload = await response.json();
-
-      if (!response.ok) {
-        throw new Error(payload.error || "AI section review failed.");
-      }
-
-      setSectionAiReviews((current) => ({
-        ...current,
-        [sectionId]: payload
-      }));
-    } catch (aiError) {
-      setSectionAiReviews((current) => ({
-        ...current,
-        [sectionId]: {
-          sectionId,
-          status: "failed",
-          concern: "unavailable",
-          concernScore: 1,
-          opinion: aiError instanceof Error ? aiError.message : "AI section review failed."
-        }
-      }));
-    } finally {
-      setSectionAiLoading((current) => ({
-        ...current,
-        [sectionId]: false
-      }));
-    }
-  }
-
-  async function createFinalRecommendation({
-    includeFinalAiOpinion,
-    selectedAiSectionIds
-  }: {
-    includeFinalAiOpinion: boolean;
-    selectedAiSectionIds: ReviewSectionId[];
-  }) {
-    if (!report) {
-      return;
-    }
-
-    const selectedAiReviews = selectedAiSectionIds
-      .map((sectionId) => sectionAiReviews[sectionId])
-      .filter((review): review is SectionAiReview => Boolean(review && review.status === "completed"));
-
-    setSummaryGenerating(true);
-    setError("");
-
-    try {
-      if (includeFinalAiOpinion) {
-        const response = await fetch("/api/ai/final", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            report,
-            selectedAiReviews
-          })
-        });
-        const payload = await response.json();
-
-        if (!response.ok) {
-          throw new Error(payload.error || "Final AI recommendation failed.");
-        }
-
-        setFinalRecommendation(payload);
-      } else {
-        setFinalRecommendation(buildLocalFinalRecommendation(report, selectedAiReviews));
-      }
-
-      setSummaryModalOpen(false);
-      setActiveTab("summary");
-    } catch (summaryError) {
-      setError(summaryError instanceof Error ? summaryError.message : "Unable to create final recommendation.");
-    } finally {
-      setSummaryGenerating(false);
-    }
-  }
-
-  async function downloadPdf() {
-    if (!report) {
-      return;
-    }
-
-    const exportReport = finalRecommendation
-      ? { ...report, finalRecommendation }
-      : report;
-
-    setPdfLoading(true);
-    setError("");
-
-    try {
-      const response = await fetch("/api/report/pdf", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          report: exportReport,
-          includeVivaQuestions: includeVivaInPdf
-        })
-      });
-
-      if (!response.ok) {
-        const payload = await response.json();
-        throw new Error(payload.error || "PDF generation failed.");
-      }
-
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `${exportReport.summary.fileName.replace(/\.docx$/i, "")}_laisr_report.pdf`;
-      link.click();
-      URL.revokeObjectURL(url);
-    } catch (pdfError) {
-      setError(pdfError instanceof Error ? pdfError.message : "PDF generation failed.");
-    } finally {
-      setPdfLoading(false);
-    }
-  }
-
-  function downloadJson() {
-    if (!report) {
-      return;
-    }
-
-    const exportReport = finalRecommendation
-      ? { ...report, finalRecommendation }
-      : report;
-
-    const blob = new Blob([JSON.stringify(exportReport, null, 2)], {
-      type: "application/json"
-    });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `${exportReport.summary.fileName.replace(/\.docx$/i, "")}_laisr_report.json`;
-    link.click();
-    URL.revokeObjectURL(url);
-  }
-
-  function resetReview() {
-    setReport(null);
-    setFile(null);
-    setAuthenticatedFile(null);
-    setCandidateId("");
-    setSubject("");
-    setError("");
-    setAnalysisStage("idle");
-    setActiveTab("metadata");
-    setSectionAiReviews({});
-    setSectionAiLoading({});
-    setFinalRecommendation(null);
-    setSummaryModalOpen(false);
-    setView("home");
-  }
-
-  const activeSection = visibleTabs.find((section) => section.id === activeTab) ?? visibleTabs[0];
+  const review = useLaisrReview();
 
   return (
     <main className="shell">
@@ -322,111 +43,110 @@ export default function Home() {
             <span>Learning Authorship Integrity Signal Review</span>
           </div>
         </div>
-        {view !== "home" || report ? (
-          <button className="outline-button compact-action" type="button" onClick={resetReview}>
+        {review.view !== "home" || review.report ? (
+          <button className="outline-button compact-action" type="button" onClick={review.resetReview}>
             <ArrowLeft size={16} />
             Home
           </button>
         ) : null}
       </header>
 
-      {report ? (
+      {review.report ? (
         <section className="report">
           <div className="recommendation">
             <div>
-              <p className="eyebrow">
-                Sectioned review
-              </p>
-              <strong>{finalRecommendation ? finalRecommendation.recommendation : "Evidence gathered"}</strong>
+              <p className="eyebrow">Sectioned review</p>
+              <strong>{review.finalRecommendation ? review.finalRecommendation.recommendation : "Evidence gathered"}</strong>
               <span>
-                {finalRecommendation
-                  ? `Final concern score ${finalRecommendation.concernScore}/10.`
+                {review.finalRecommendation
+                  ? `Final concern score ${review.finalRecommendation.concernScore}/10.`
                   : "No overall recommendation has been generated yet. Review the sections, then create the summary when the evidence is ready."}
               </span>
             </div>
-            <button className="primary-button light" type="button" onClick={() => setSummaryModalOpen(true)}>
+            <button className="primary-button light" type="button" onClick={() => review.setSummaryModalOpen(true)}>
               View/Create Summary
             </button>
           </div>
 
           <div className="summary-grid">
-            <SummaryItem label="File" value={report.summary.fileName} />
-            <SummaryItem label="Candidate" value={report.summary.candidateId} />
-            <SummaryItem label="Words" value={String(report.summary.wordCount)} />
-            <SummaryItem label="Paragraphs" value={String(report.summary.paragraphCount)} />
-            <SummaryItem label="Consistency" value={`${report.linguisticProfile.consistencyScore}/100`} />
+            <SummaryItem label="File" value={review.report.summary.fileName} />
+            <SummaryItem label="Candidate" value={review.report.summary.candidateId} />
+            <SummaryItem label="Words" value={String(review.report.summary.wordCount)} />
+            <SummaryItem label="Paragraphs" value={String(review.report.summary.paragraphCount)} />
+            <SummaryItem label="Consistency" value={`${review.report.linguisticProfile.consistencyScore}/100`} />
           </div>
 
           <section className="tab-shell">
             <div className="tabs" role="tablist" aria-label="LAISR report sections">
-              {visibleTabs.map((section) => (
+              {review.visibleTabs.map((section) => (
                 <TabButton
-                  active={activeTab === section.id}
+                  active={review.activeTab === section.id}
                   icon={TAB_ICONS[section.id]}
                   key={section.id}
                   label={section.id === "ai_prose" ? "AI opinion" : section.id === "summary" ? "Summary" : section.label}
-                  onClick={() => setActiveTab(section.id)}
+                  onClick={() => review.setActiveTab(section.id)}
                 />
               ))}
             </div>
 
             <div className="tab-panel">
-              {activeSection?.id === "summary" && summarySection ? (
+              {review.activeSection?.id === "summary" && review.summarySection ? (
                 <SummaryRecommendationTab
-                  completedAiReviews={Object.values(sectionAiReviews).filter((review): review is SectionAiReview => Boolean(review && review.status === "completed"))}
-                  finalRecommendation={finalRecommendation}
-                  generatingSummary={summaryGenerating}
-                  onCreateSummary={() => setSummaryModalOpen(true)}
-                  includeVivaInPdf={includeVivaInPdf}
-                  onDownloadJson={downloadJson}
-                  onDownloadPdf={downloadPdf}
-                  onToggleViva={setIncludeVivaInPdf}
-                  pdfLoading={pdfLoading}
-                  report={report}
-                  section={summarySection}
+                  completedAiReviews={review.completedAiReviews}
+                  finalRecommendation={review.finalRecommendation}
+                  generatingSummary={review.summaryGenerating}
+                  includeVivaInPdf={review.includeVivaInPdf}
+                  onCreateSummary={() => review.setSummaryModalOpen(true)}
+                  onDownloadJson={review.downloadJson}
+                  onDownloadPdf={review.downloadPdf}
+                  onToggleViva={review.setIncludeVivaInPdf}
+                  pdfLoading={review.pdfLoading}
+                  report={review.report}
+                  section={review.summarySection}
                 />
-              ) : activeSection ? (
+              ) : review.activeSection ? (
                 <SectionReviewTab
-                  aiConfigured={Boolean(aiConfig?.aiConfigured)}
-                  aiLoading={Boolean(sectionAiLoading[activeSection.id])}
-                  aiReview={sectionAiReviews[activeSection.id]}
-                  onRunAi={() => runSectionAi(activeSection.id)}
-                  report={report}
-                  section={activeSection}
+                  aiConfigured={review.aiConfigured}
+                  aiLoading={Boolean(review.sectionAiLoading[review.activeSection.id])}
+                  aiReview={review.sectionAiReviews[review.activeSection.id]}
+                  onRunAi={() => review.runSectionAi(review.activeSection.id)}
+                  report={review.report}
+                  section={review.activeSection}
                 />
               ) : null}
             </div>
           </section>
-          {summaryModalOpen && summarySection ? (
+
+          {review.summaryModalOpen && review.summarySection ? (
             <SummaryCreationModal
-              aiConfigured={Boolean(aiConfig?.aiConfigured)}
-              completedAiReviews={Object.values(sectionAiReviews).filter((review): review is SectionAiReview => Boolean(review && review.status === "completed"))}
-              generating={summaryGenerating}
-              onClose={() => setSummaryModalOpen(false)}
-              onCreate={createFinalRecommendation}
+              aiConfigured={review.aiConfigured}
+              completedAiReviews={review.completedAiReviews}
+              generating={review.summaryGenerating}
+              onClose={() => review.setSummaryModalOpen(false)}
+              onCreate={review.createFinalRecommendation}
             />
           ) : null}
-          {error ? <p className="error-text">{error}</p> : null}
+          {review.error ? <p className="error-text">{review.error}</p> : null}
         </section>
       ) : (
         <>
-          {view === "home" ? <HomeOptions onSingleUpload={() => setView("single")} /> : null}
-          {view === "single" ? (
+          {review.view === "home" ? <HomeOptions onSingleUpload={() => review.setView("single")} /> : null}
+          {review.view === "single" ? (
             <SingleUploadScreen
               aiLoading={false}
-              analysisStage={analysisStage}
-              authenticatedFile={authenticatedFile}
-              candidateId={candidateId}
-              error={error}
-              file={file}
-              loading={loading}
-              subject={subject}
-              onAnalyse={analyseDocument}
-              onBack={() => setView("home")}
-              onCandidateIdChange={setCandidateId}
-              onFileChange={setFile}
-              onAuthenticatedFileChange={setAuthenticatedFile}
-              onSubjectChange={setSubject}
+              analysisStage={review.analysisStage}
+              authenticatedFile={review.authenticatedFile}
+              candidateId={review.candidateId}
+              error={review.error}
+              file={review.file}
+              loading={review.loading}
+              subject={review.subject}
+              onAnalyse={review.analyseDocument}
+              onAuthenticatedFileChange={review.setAuthenticatedFile}
+              onBack={() => review.setView("home")}
+              onCandidateIdChange={review.setCandidateId}
+              onFileChange={review.setFile}
+              onSubjectChange={review.setSubject}
             />
           ) : null}
         </>
