@@ -20,7 +20,7 @@ const CHECK_DEFINITIONS = [
     label: "Word XML forensics",
     category: "XML Forensics",
     clearDetail:
-      "Checked edit-session IDs, pasted-session clues, hidden or white text, browser-origin font markers, tracked-formatting signals, and font diversity."
+      "Checked edit-session marker density, paragraph-level marker distribution, pasted-session clues, hidden or white text, browser-origin font markers, tracked-formatting signals, and font diversity."
   },
   {
     id: "textual",

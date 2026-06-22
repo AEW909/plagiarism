@@ -12,6 +12,7 @@ import {
 import type { ReactNode } from "react";
 import {
   DocumentReviewTab,
+  EvidenceOverviewTab,
   HomeOptions,
   SectionReviewTab,
   SingleUploadScreen,
@@ -23,6 +24,7 @@ import { SummaryItem, TabButton, WorkflowGuide, type WorkflowStep } from "@/comp
 
 const TAB_ICONS: Record<ReportTab, ReactNode> = {
   document: <FileText size={17} />,
+  overview: <FileSearch size={17} />,
   metadata: <FileSearch size={17} />,
   textual: <FileSearch size={17} />,
   comparative: <UserCheck size={17} />,
@@ -33,7 +35,11 @@ const TAB_ICONS: Record<ReportTab, ReactNode> = {
 export default function Home() {
   const review = useLaisrReview();
   const reportTabs = review.report
-    ? [{ id: "document" as const, label: "Document Review" }, ...review.visibleTabs]
+    ? [
+        { id: "document" as const, label: "Document Review" },
+        { id: "overview" as const, label: "Evidence Overview" },
+        ...review.visibleTabs
+      ]
     : [];
   const workflowSteps = buildWorkflowSteps({
     completedAiCount: review.completedAiReviews.length,
@@ -97,6 +103,13 @@ export default function Home() {
             <div className="tab-panel">
               {review.activeTab === "document" ? (
                 <DocumentReviewTab report={review.report} />
+              ) : review.activeTab === "overview" ? (
+                <EvidenceOverviewTab
+                  completedAiCount={review.completedAiReviews.length}
+                  onOpenTab={review.setActiveTab}
+                  report={review.report}
+                  sectionAiLoading={review.sectionAiLoading}
+                />
               ) : review.activeSection?.id === "summary" && review.summarySection ? (
                 <SummaryRecommendationTab
                   completedAiReviews={review.completedAiReviews}
@@ -193,7 +206,7 @@ function buildWorkflowSteps({
     {
       id: "evidence",
       label: "Evidence",
-      description: hasReport ? "Open forensic sections" : "Available after document review",
+      description: hasReport ? "Overview and forensic sections" : "Available after document review",
       status: !hasReport
         ? "locked"
         : step === "document_review"

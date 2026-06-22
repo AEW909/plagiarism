@@ -366,10 +366,6 @@ function analyseXml(doc: ExtractedDocx): Finding[] {
   const uniqueRsids = new Set(rsids);
   const wordCount = tokenize(doc.text).length;
 
-  if ((wordCount < 8000 && uniqueRsids.size > 80) || uniqueRsids.size > 150) {
-    findings.push(makeFinding("xml-rsid", "XML Forensics", "notable", "Unusually varied edit-session identifiers", `The DOCX XML contains ${uniqueRsids.size} unique rsidR values across ${paragraphs.length || 1} paragraphs.`, "Expected: no fixed universal norm; this check flags >80 unique RSIDs under 8,000 words, and >150 unique RSIDs unconditionally.", "word/document.xml", "High RSID variety can be consistent with content assembled across multiple edit sessions or sources.", "Normal Word autosave, collaborative editing, and long editing histories can also increase RSID variety.", "Ask the candidate to explain how the document evolved and whether they can show drafts or version history."));
-  }
-
   if (wordCount >= 1200 && uniqueRsids.size > 0 && uniqueRsids.size <= 3) {
     findings.push(makeFinding("xml-low-rsid-diversity", "XML Forensics", "notable", "Very low edit-session diversity", `The document contains about ${wordCount} words but only ${uniqueRsids.size} unique rsidR edit-session value${uniqueRsids.size === 1 ? "" : "s"}.`, "Expected: longer essays often show a varied pattern of edit-session IDs as text is drafted, saved, revised, and reorganised. Very low diversity can happen when text is pasted into a fresh document or passed through a plain-text workflow.", "word/document.xml", "This can support a washed-text or single-block assembly hypothesis when paired with low editing time, uniform timestamps, or weak drafting evidence.", "A student could genuinely draft in one sitting, use an editor that rewrites RSIDs, or paste from their own legitimate notes into a clean final file.", "Ask whether the candidate drafted elsewhere first, used a plain-text editor, or copied from earlier notes into the final document."));
   }
@@ -378,15 +374,89 @@ function analyseXml(doc: ExtractedDocx): Finding[] {
     const text = extractTextFromXml(paragraphXml);
     const paragraphRsids = [...paragraphXml.matchAll(/w:rsidR="([^"]+)"/g)].map((match) => match[1]);
     const uniqueParagraphRsids = [...new Set(paragraphRsids)];
+    const rsidCounts = paragraphRsids.reduce<Record<string, number>>((counts, rsid) => {
+      counts[rsid] = (counts[rsid] ?? 0) + 1;
+      return counts;
+    }, {});
+    const dominantRsid = Object.entries(rsidCounts).sort((left, right) => right[1] - left[1])[0]?.[0] ?? null;
 
     return {
       index,
       text,
       wordCount: tokenize(text).length,
+      dominantRsid,
       primaryRsid: uniqueParagraphRsids.length === 1 ? uniqueParagraphRsids[0] : null,
       rsidCount: uniqueParagraphRsids.length
     };
   });
+  const substantialParagraphs = paragraphRsidProfile.filter((paragraph) => paragraph.wordCount >= 25);
+  const paragraphCount = Math.max(1, paragraphs.length);
+  const rsidsPer1000Words = uniqueRsids.size / (Math.max(wordCount, 1) / 1000);
+  const rsidsPerParagraph = uniqueRsids.size / paragraphCount;
+
+  if (uniqueRsids.size > 0 && (rsidsPerParagraph >= 2 || rsidsPer1000Words >= 25 || uniqueRsids.size > 150)) {
+    const densityLabel = rsidsPerParagraph > 5 ? "unusual" : rsidsPerParagraph >= 2 ? "elevated" : "high by word count";
+    findings.push(makeFinding(
+      "xml-rsid",
+      "XML Forensics",
+      "notable",
+      "Elevated edit-session marker density",
+      `The DOCX XML contains ${uniqueRsids.size} different Word edit-session markers for about ${wordCount} words and ${paragraphCount} paragraphs. That is ${rsidsPer1000Words.toFixed(1)} markers per 1,000 words and ${rsidsPerParagraph.toFixed(1)} markers per paragraph, which is ${densityLabel} as a process clue.`,
+      "Expected: there is no validated misconduct threshold. As a cautious guide, below 2 markers per paragraph is usually unremarkable, 2-5 is elevated, and above 5 is unusual. Density and distribution matter more than raw count.",
+      "word/document.xml",
+      "High marker density can fit a document that was revised repeatedly, assembled from multiple drafts, or edited across several sessions. It is a process signal, not evidence of AI or plagiarism by itself.",
+      "Word autosave, long drafting histories, feedback cycles, collaboration, and cloud editing can legitimately create many markers.",
+      "Ask the candidate to describe the drafting timeline and whether they can show drafts, notes, or version history that explain the editing pattern."
+    ));
+  }
+
+  const rsidCountsByParagraph = substantialParagraphs.map((paragraph) => paragraph.rsidCount);
+  const meanParagraphRsids = mean(rsidCountsByParagraph);
+  const sdParagraphRsids = sd(rsidCountsByParagraph, meanParagraphRsids);
+  const unevenParagraphs = substantialParagraphs.filter((paragraph) =>
+    paragraph.rsidCount >= Math.max(8, meanParagraphRsids + sdParagraphRsids * 2)
+  );
+
+  if (substantialParagraphs.length >= 8 && unevenParagraphs.length >= 2) {
+    const examples = unevenParagraphs
+      .slice(0, 3)
+      .map((paragraph) => `paragraph ${paragraph.index + 1} has ${paragraph.rsidCount} markers: "${clip(paragraph.text, 80)}"`)
+      .join("; ");
+
+    findings.push(makeFinding(
+      "xml-rsid-uneven-distribution",
+      "XML Forensics",
+      "notable",
+      "Uneven edit-session marker distribution",
+      `${unevenParagraphs.length} substantial paragraph${unevenParagraphs.length === 1 ? "" : "s"} contain far more Word edit-session markers than the document average. Average per substantial paragraph: ${meanParagraphRsids.toFixed(1)}; highest paragraph count: ${Math.max(...rsidCountsByParagraph)}. Examples: ${examples}.`,
+      "Expected: repeated editing can be spread across a document, but isolated paragraphs with much denser edit-marker activity are more informative than the total RSID count alone.",
+      "word/document.xml",
+      "Uneven distribution can point to sections that were inserted, heavily edited, or assembled differently from surrounding text, especially if those sections also show style or formatting changes.",
+      "A difficult paragraph, teacher feedback, reference-manager activity, or local formatting cleanup can also concentrate markers legitimately.",
+      "Ask the candidate why the highlighted section changed more than the rest of the document and invite them to explain that paragraph's drafting history."
+    ));
+  }
+
+  const dominantRsids = substantialParagraphs
+    .map((paragraph) => paragraph.dominantRsid)
+    .filter((rsid): rsid is string => Boolean(rsid));
+  const uniqueDominantRsids = new Set(dominantRsids);
+  const dominantUniquenessPercent = dominantRsids.length > 0 ? (uniqueDominantRsids.size / dominantRsids.length) * 100 : 0;
+
+  if (dominantRsids.length >= 10 && uniqueDominantRsids.size >= 20 && dominantUniquenessPercent >= 75) {
+    findings.push(makeFinding(
+      "xml-rsid-fragmentation",
+      "XML Forensics",
+      "notable",
+      "Fragmented paragraph provenance pattern",
+      `${uniqueDominantRsids.size} different edit-session markers dominate ${dominantRsids.length} substantial paragraphs (${dominantUniquenessPercent.toFixed(0)}% paragraph-level uniqueness).`,
+      "Expected: a document may show many edit sessions, but when most substantial paragraphs have different dominant markers it suggests a fragmented writing or assembly history worth checking.",
+      "word/document.xml",
+      "This pattern can be consistent with extensive section-by-section revision, material drawn from several drafts, or assembled text from different sources.",
+      "A diligent student revising over many sessions can also produce a fragmented pattern, particularly in longer projects.",
+      "Ask the candidate to walk through the order in which sections were drafted and whether they can show notes or earlier versions for several specific paragraphs."
+    ));
+  }
 
   const bulkRuns: Array<{ rsid: string; start: number; end: number; words: number; sample: string }> = [];
   let currentRun: { rsid: string; start: number; end: number; words: number; sample: string } | null = null;

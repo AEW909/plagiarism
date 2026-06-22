@@ -779,6 +779,106 @@ export function DocumentReviewTab({ report }: { report: LaisrReport }) {
   );
 }
 
+export function EvidenceOverviewTab({
+  completedAiCount,
+  onOpenTab,
+  report,
+  sectionAiLoading
+}: {
+  completedAiCount: number;
+  onOpenTab: (tab: "document" | ReviewSectionId) => void;
+  report: LaisrReport;
+  sectionAiLoading: Partial<Record<ReviewSectionId, boolean>>;
+}) {
+  const rows: Array<{
+    id: string;
+    label: string;
+    detail: string;
+    status: "clear" | "issues" | "pending" | "not_run";
+    target: "document" | ReviewSectionId;
+  }> = [
+    {
+      id: "document",
+      label: "Document review",
+      detail: `${report.summary.paragraphCount} paragraphs extracted with linked annotations where possible.`,
+      status: report.findings.length > 0 ? "issues" : "clear",
+      target: "document"
+    },
+    ...report.evidenceChecks.map((check) => ({
+      id: check.id,
+      label: check.label,
+      detail: check.summary,
+      status: check.status,
+      target: evidenceCheckTarget(check.category)
+    })),
+    {
+      id: "section-ai",
+      label: "Scoped AI reviews",
+      detail: completedAiCount
+        ? `${completedAiCount} AI section opinion${completedAiCount === 1 ? "" : "s"} completed.`
+        : "Optional section-specific AI opinions have not been run.",
+      status: Object.values(sectionAiLoading).some(Boolean)
+        ? "pending"
+        : completedAiCount > 0
+          ? "issues"
+          : "not_run",
+      target: "ai_prose"
+    }
+  ];
+
+  return (
+    <section className="panel evidence-overview">
+      <div className="panel-heading-row">
+        <div>
+          <h2>
+            <SearchCheck size={18} />
+            Evidence overview
+          </h2>
+          <p className="muted">
+            Use this as the control room for the review. Each row shows whether an area was checked and opens the
+            most relevant workspace.
+          </p>
+        </div>
+      </div>
+      <div className="evidence-overview-list">
+        {rows.map((row) => (
+          <button className="overview-row" key={row.id} type="button" onClick={() => onOpenTab(row.target)}>
+            <span>
+              <strong>{row.label}</strong>
+              <small>{row.detail}</small>
+            </span>
+            <mark className={`tag ${row.status}`}>
+              {row.status === "issues"
+                ? "Review"
+                : row.status === "pending"
+                  ? "Running"
+                  : row.status === "not_run"
+                    ? "Not run"
+                    : "Clear"}
+            </mark>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function evidenceCheckTarget(category: string): ReviewSectionId {
+  if (category === "Authenticated Writing Comparison") {
+    return "comparative";
+  }
+
+  if (category === "Textual Anomalies" || category === "Stylometric Indicators" || category === "Linguistic Consistency") {
+    return "textual";
+  }
+
+  if (category === "AI Text Review" || category === "Text-only AI Prose Opinion") {
+    return "ai_prose";
+  }
+
+  return "metadata";
+}
+
 export function EvidenceChecklist({ report }: { report: LaisrReport }) {
   return (
     <div className="checklist">

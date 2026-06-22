@@ -1077,6 +1077,50 @@ input:focus {
   gap: 8px;
 }
 
+.evidence-overview-list {
+  display: grid;
+  gap: 8px;
+}
+
+.overview-row {
+  display: flex;
+  min-height: 68px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: var(--surface-strong);
+  color: var(--ink);
+  text-align: left;
+}
+
+.overview-row:hover {
+  border-color: rgba(49, 95, 140, 0.32);
+  background: #fff;
+}
+
+.overview-row:focus-visible {
+  outline: 3px solid rgba(49, 95, 140, 0.22);
+  outline-offset: 2px;
+}
+
+.overview-row span {
+  display: grid;
+  gap: 4px;
+}
+
+.overview-row strong {
+  font-size: 0.95rem;
+}
+
+.overview-row small {
+  color: var(--muted);
+  font-weight: 800;
+  line-height: 1.4;
+}
+
 .check-row {
   border: 1px solid var(--line);
   border-radius: 8px;

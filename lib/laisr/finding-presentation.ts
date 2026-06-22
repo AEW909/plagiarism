@@ -63,6 +63,18 @@ export function plainFindingSummary(finding: Finding) {
     return "Some paragraphs use Word edit-session IDs that are present in the body of the document but absent from Word's main session list. That mismatch can happen when text has been pasted or imported from elsewhere, though some conversions and templates can also produce it.";
   }
 
+  if (finding.id === "xml-rsid-uneven-distribution") {
+    return "The total number of Word edit markers is less important than where they appear. Here, some paragraphs carry much denser edit-marker activity than the rest of the document, so those sections are worth asking about.";
+  }
+
+  if (finding.id === "xml-rsid-fragmentation") {
+    return "Many paragraphs appear to have their own dominant Word edit marker. That can suggest a fragmented drafting or assembly history, but it can also come from careful section-by-section editing over time.";
+  }
+
+  if (finding.id === "xml-rsid") {
+    return "The document has a higher density of Word edit-session markers than expected for its size. This is a weak-to-medium process clue: useful for questions about drafting history, but not proof of misconduct by itself.";
+  }
+
   if (finding.id === "xml-bulk-rsid-block") {
     return "A large run of text appears to share one Word edit-session marker. That can be consistent with a block being pasted in at once, but it can also happen if the student drafted elsewhere and pasted their own work into the final document.";
   }
@@ -202,6 +214,24 @@ export function plainFindingObservation(finding: Finding) {
       : "A large run of text shares one Word edit-session marker.";
   }
 
+  if (finding.id === "xml-rsid-uneven-distribution") {
+    const paragraphs = evidence.match(/^(\d+) substantial paragraph/i)?.[1];
+    const average = evidence.match(/Average per substantial paragraph: ([\d.]+)/i)?.[1];
+    const highest = evidence.match(/highest paragraph count: (\d+)/i)?.[1];
+    return paragraphs && average && highest
+      ? `${paragraphs} substantial paragraph${paragraphs === "1" ? "" : "s"} have much denser edit-marker activity than the document average of ${average}; the highest paragraph has ${highest}.`
+      : "Some paragraphs have much denser edit-marker activity than the rest of the document.";
+  }
+
+  if (finding.id === "xml-rsid-fragmentation") {
+    const unique = evidence.match(/^(\d+) different/i)?.[1];
+    const paragraphs = evidence.match(/dominate (\d+) substantial paragraphs/i)?.[1];
+    const percent = evidence.match(/\((\d+)% paragraph-level uniqueness/i)?.[1];
+    return unique && paragraphs && percent
+      ? `${unique} different edit-session markers dominate ${paragraphs} substantial paragraphs, giving ${percent}% paragraph-level uniqueness.`
+      : "Many substantial paragraphs have different dominant edit-session markers.";
+  }
+
   if (finding.id === "xml-low-rsid-diversity") {
     const words = evidence.match(/about ([\d,]+) words/i)?.[1];
     const rsids = evidence.match(/only (\d+) unique/i)?.[1];
@@ -211,11 +241,16 @@ export function plainFindingObservation(finding: Finding) {
   }
 
   if (finding.id === "xml-rsid") {
-    const unique = evidence.match(/contains (\d+) unique/i)?.[1];
-    const paragraphs = evidence.match(/across (\d+) paragraphs/i)?.[1];
-    return unique && paragraphs
-      ? `The document contains ${unique} different Word edit-session markers across ${paragraphs} paragraphs.`
-      : "The document contains an unusual number of Word edit-session markers.";
+    const unique = evidence.match(/contains (\d+) different/i)?.[1] ?? evidence.match(/contains (\d+) unique/i)?.[1];
+    const words = evidence.match(/about ([\d,]+) words/i)?.[1];
+    const paragraphs = evidence.match(/and (\d+) paragraphs/i)?.[1] ?? evidence.match(/across (\d+) paragraphs/i)?.[1];
+    const per1000 = evidence.match(/That is ([\d.]+) markers per 1,000 words/i)?.[1];
+    const perParagraph = evidence.match(/and ([\d.]+) markers per paragraph/i)?.[1];
+    return unique && words && paragraphs && per1000 && perParagraph
+      ? `The document has ${unique} different Word edit-session markers across about ${words} words and ${paragraphs} paragraphs (${per1000} per 1,000 words; ${perParagraph} per paragraph).`
+      : unique && paragraphs
+        ? `The document contains ${unique} different Word edit-session markers across ${paragraphs} paragraphs.`
+        : "The document contains an elevated density of Word edit-session markers.";
   }
 
   if (finding.id === "xml-rsid-root") {

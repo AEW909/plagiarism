@@ -5,7 +5,7 @@ import { buildLocalFinalRecommendation } from "@/lib/laisr/final-recommendation"
 import { buildAlgorithmicSections, buildSummarySection } from "@/lib/laisr/sections";
 import type { FinalRecommendation, LaisrReport, ReviewSectionId, SectionAiReview } from "@/lib/laisr/types";
 
-export type ReportTab = "document" | ReviewSectionId;
+export type ReportTab = "document" | "overview" | ReviewSectionId;
 export type AppView = "home" | "single";
 export type WorkflowStepId = "upload" | "document_review" | "evidence" | "ai_reviews" | "summary";
 
@@ -59,7 +59,7 @@ export function useLaisrReview() {
     const base = reportSections.filter((section) => section.id !== "comparative" || section.available);
     return summarySection ? [...base, summarySection] : base;
   }, [reportSections, summarySection]);
-  const activeSection = activeTab === "document"
+  const activeSection = activeTab === "document" || activeTab === "overview"
     ? undefined
     : visibleTabs.find((section) => section.id === activeTab) ?? visibleTabs[0];
   const completedAiReviews = Object.values(sectionAiReviews).filter(
