@@ -469,19 +469,19 @@ function FindingCard({ finding }: { finding: Finding }) {
       <Text style={[styles.findingTitle, { color: colour }]}>
         {finding.severity.toUpperCase()} · {finding.title}
       </Text>
-      <Text style={styles.findingText}>{finding.evidence}</Text>
+      <Text style={styles.findingText}>{pdfClip(finding.evidence, 520)}</Text>
       {finding.normalRange ? (
         <>
           <Text style={styles.findingSubhead}>Normal range / benchmark</Text>
-          <Text style={styles.findingText}>{finding.normalRange}</Text>
+          <Text style={styles.findingText}>{pdfClip(finding.normalRange, 260)}</Text>
         </>
       ) : null}
       <Text style={styles.findingSubhead}>Interpretation</Text>
-      <Text style={styles.findingText}>{finding.interpretation}</Text>
+      <Text style={styles.findingText}>{pdfClip(finding.interpretation, 360)}</Text>
       <Text style={styles.findingSubhead}>Counter-argument</Text>
-      <Text style={styles.findingText}>{finding.counterArgument}</Text>
+      <Text style={styles.findingText}>{pdfClip(finding.counterArgument, 300)}</Text>
       <Text style={styles.findingSubhead}>Viva angle</Text>
-      <Text style={styles.findingText}>{finding.vivaAngle}</Text>
+      <Text style={styles.findingText}>{pdfClip(finding.vivaAngle, 260)}</Text>
     </View>
   );
 }
@@ -525,4 +525,9 @@ function severityBackground(severity: Finding["severity"]) {
     return colours.amberBg;
   }
   return colours.blueBg;
+}
+
+function pdfClip(value: string, length: number) {
+  const compact = value.replace(/\s+/g, " ").trim();
+  return compact.length <= length ? compact : `${compact.slice(0, length - 3)}...`;
 }

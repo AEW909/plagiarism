@@ -333,8 +333,11 @@ export function useLaisrReview() {
       const link = document.createElement("a");
       link.href = url;
       link.download = `${exportReport.summary.fileName.replace(/\.docx$/i, "")}_laisr_report.pdf`;
+      link.style.display = "none";
+      document.body.appendChild(link);
       link.click();
-      URL.revokeObjectURL(url);
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (pdfError) {
       setError(pdfError instanceof Error ? pdfError.message : "PDF generation failed.");
     } finally {
