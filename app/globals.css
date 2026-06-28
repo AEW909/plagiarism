@@ -335,6 +335,82 @@
   gap: 10px;
 }
 
+.review-split {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.34fr) minmax(0, 0.66fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.review-left-rail {
+  position: sticky;
+  top: 14px;
+  display: grid;
+  gap: 12px;
+  max-height: calc(100vh - 28px);
+  overflow: auto;
+}
+
+.review-left-heading {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px;
+  background: #fff;
+  box-shadow: 0 18px 42px rgba(26, 45, 64, 0.07);
+}
+
+.review-left-heading h2 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.concern-accordion {
+  display: grid;
+  gap: 10px;
+}
+
+.review-document-panel {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.file-snapshot-card {
+  display: grid;
+  gap: 16px;
+  border: 1px solid rgba(49, 95, 140, 0.22);
+  border-radius: 14px;
+  padding: 18px;
+  background: #f8fbff;
+  box-shadow: 0 20px 48px rgba(26, 45, 64, 0.08);
+  scroll-margin-top: 18px;
+}
+
+.file-snapshot-card:target {
+  border-color: rgba(49, 95, 140, 0.68);
+  box-shadow: 0 0 0 4px rgba(49, 95, 140, 0.12), 0 20px 48px rgba(26, 45, 64, 0.08);
+}
+
+.file-snapshot-card h2 {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.file-snapshot-card p {
+  max-width: 760px;
+  margin: 8px 0 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.file-snapshot-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
 .teacher-section,
 .teacher-document-drawer {
   border: 1px solid var(--line);
@@ -369,8 +445,9 @@
   gap: 14px;
   border: 1px solid var(--line);
   border-radius: 12px;
-  padding: 18px;
+  padding: 0;
   background: #fbfcfd;
+  overflow: hidden;
 }
 
 .concern-card.status-check {
@@ -391,6 +468,7 @@
   display: flex;
   justify-content: space-between;
   gap: 14px;
+  padding: 0 16px;
 }
 
 .concern-card h3 {
@@ -413,6 +491,35 @@
   font-size: 0.78rem;
   font-weight: 950;
   white-space: nowrap;
+}
+
+.concern-card-summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  padding: 16px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.concern-card-summary::-webkit-details-marker {
+  display: none;
+}
+
+.concern-number {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 999px;
+  background: #102338;
+  color: #fff;
+  font-weight: 950;
+}
+
+.concern-card[open] .concern-card-summary {
+  border-bottom: 1px solid rgba(26, 45, 64, 0.08);
 }
 
 .status-check mark {
@@ -438,6 +545,7 @@
 .finding-preview-list {
   display: grid;
   gap: 8px;
+  padding: 0 16px;
 }
 
 .finding-preview-row {
@@ -454,9 +562,16 @@
 }
 
 .finding-preview-row strong {
+  grid-column: 2;
   color: #27374a;
   font-size: 0.9rem;
   line-height: 1.45;
+}
+
+.finding-preview-row small {
+  grid-column: 2;
+  color: var(--muted);
+  font-weight: 800;
 }
 
 .severity-dot {
@@ -483,13 +598,30 @@
 
 .group-detail-drawer {
   border-top: 1px solid rgba(26, 45, 64, 0.08);
-  padding-top: 12px;
+  padding: 12px 16px 0;
 }
 
 .group-detail-drawer summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
   cursor: pointer;
   color: var(--blue);
   font-weight: 950;
+}
+
+.group-detail-drawer summary span {
+  border-radius: 999px;
+  padding: 2px 7px;
+  background: #eaf1fb;
+  color: #315f8c;
+  font-size: 0.74rem;
+}
+
+.finding-group-stack {
+  display: grid;
+  gap: 10px;
+  padding-bottom: 16px;
 }
 
 .group-detail-drawer .teacher-finding-list {
@@ -562,12 +694,23 @@
 
 .teacher-ai-opinion {
   border-radius: 10px;
+  margin: 0 16px;
   padding: 14px;
   background: #eef5fb;
 }
 
 .teacher-ai-opinion p {
   margin: 6px 0 0;
+}
+
+.teacher-ai-opinion details {
+  margin-top: 10px;
+}
+
+.teacher-ai-opinion summary {
+  cursor: pointer;
+  color: var(--blue);
+  font-weight: 950;
 }
 
 .teacher-document-drawer summary {
@@ -625,8 +768,16 @@
   .future-actions,
   .review-status-header,
   .teacher-summary-strip,
-  .concern-grid {
+  .concern-grid,
+  .review-split,
+  .file-snapshot-grid {
     grid-template-columns: 1fr;
+  }
+
+  .review-left-rail {
+    position: static;
+    max-height: none;
+    overflow: visible;
   }
 
   .teacher-outcome {
@@ -1607,6 +1758,10 @@ input:focus {
   align-items: start;
 }
 
+.annotation-layout.document-only {
+  display: block;
+}
+
 .document-reader {
   display: grid;
   max-height: 72vh;
@@ -1626,11 +1781,13 @@ input:focus {
   border: 1px solid transparent;
   border-radius: 8px;
   padding: 10px;
+  scroll-margin-top: 18px;
 }
 
 .reader-paragraph:target {
   border-color: rgba(49, 95, 140, 0.45);
-  background: rgba(49, 95, 140, 0.08);
+  background: rgba(49, 95, 140, 0.11);
+  box-shadow: 0 0 0 4px rgba(49, 95, 140, 0.1);
 }
 
 .reader-paragraph.annotated {

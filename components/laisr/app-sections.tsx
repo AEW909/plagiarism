@@ -428,39 +428,29 @@ export function TeacherReviewDashboard({
         </div>
       </section>
 
-      <div className="teacher-summary-strip">
-        <SummaryItem label="File" value={report.summary.fileName} />
-        <SummaryItem label="Candidate" value={report.summary.candidateId} />
-        <SummaryItem label="Words" value={String(report.summary.wordCount)} />
-        <SummaryItem label="Known writing" value={report.comparativeProfile.available ? "Supplied" : "Not supplied"} />
-      </div>
-
-      <section className="teacher-section">
-        <div className="teacher-section-heading">
-          <div>
-            <p className="eyebrow">Review concerns</p>
-            <h2>What LAISR found</h2>
+      <section className="review-split">
+        <aside className="review-left-rail" aria-label="Evidence navigation">
+          <div className="review-left-heading">
+            <div>
+              <p className="eyebrow">Review concerns</p>
+              <h2>What LAISR found</h2>
+            </div>
+            <button className="outline-button compact-action" type="button" onClick={onReset}>
+              New review
+            </button>
           </div>
-          <button className="outline-button compact-action" type="button" onClick={onReset}>
-            New review
-          </button>
-        </div>
-        <div className="concern-grid">
-          {groups.map((group) => (
-            <ConcernGroupCard group={group} key={group.id} />
-          ))}
-        </div>
-      </section>
+          <div className="concern-accordion">
+            {groups.map((group, index) => (
+              <ConcernGroupCard group={group} index={index + 1} key={group.id} />
+            ))}
+          </div>
+        </aside>
 
-      <details className="teacher-document-drawer">
-        <summary>
-          <span>
-            <strong>Open document view</strong>
-            <small>Read the extracted essay text with linked concern markers.</small>
-          </span>
-        </summary>
-        <DocumentAnnotationView report={report} />
-      </details>
+        <section className="review-document-panel" aria-label="Document review">
+          <FileSnapshotCard report={report} />
+          <DocumentAnnotationView report={report} showAnnotations={false} />
+        </section>
+      </section>
 
       <section className="teacher-section export-section">
         <div>
@@ -520,6 +510,36 @@ type TeacherConcernGroup = {
   emptyText: string;
 };
 
+function FileSnapshotCard({ report }: { report: LaisrReport }) {
+  const rootId = findRootEditId(report);
+  const revision = report.metadata.revision && report.metadata.revision !== "N/A"
+    ? report.metadata.revision
+    : "Not recorded";
+
+  return (
+    <article className="file-snapshot-card" id="file-snapshot">
+      <div>
+        <p className="eyebrow">File history snapshot</p>
+        <h2>{report.summary.fileName}</h2>
+        <p>
+          These are the key Word file-history details. They help explain global metadata and file-structure findings
+          that do not attach to one visible paragraph.
+        </p>
+      </div>
+      <div className="file-snapshot-grid">
+        <SummaryItem label="Candidate" value={report.summary.candidateId || "Not supplied"} />
+        <SummaryItem label="Subject" value={report.summary.subject || "Not supplied"} />
+        <SummaryItem label="Author" value={report.metadata.creator || "Not recorded"} />
+        <SummaryItem label="Last editor" value={report.metadata.lastModifiedBy || "Not recorded"} />
+        <SummaryItem label="Revision count" value={revision} />
+        <SummaryItem label="Root edit ID" value={rootId} />
+        <SummaryItem label="Application" value={report.metadata.application || "Not recorded"} />
+        <SummaryItem label="Words" value={String(report.summary.wordCount)} />
+      </div>
+    </article>
+  );
+}
+
 function ReviewStatusHeader({
   aiConfigured,
   analysisStage,
@@ -561,23 +581,35 @@ function ReviewStatusHeader({
   );
 }
 
-function ConcernGroupCard({ group }: { group: TeacherConcernGroup }) {
+function ConcernGroupCard({ group, index }: { group: TeacherConcernGroup; index: number }) {
+  const findingGroups = groupFindingsForNavigation(group.findings);
   const previewFindings = [...group.findings].sort((a, b) => severityRank(b.severity) - severityRank(a.severity)).slice(0, 3);
 
   return (
-    <article className={`concern-card status-${group.status}`}>
-      <div className="concern-card-head">
+    <details className={`concern-card status-${group.status}`}>
+      <summary className="concern-card-summary">
+        <span className="concern-number">{index}</span>
         <div>
           <h3>{group.title}</h3>
           <p>{group.description}</p>
         </div>
         <mark>{group.statusLabel}</mark>
+      </summary>
+      <div className="concern-card-head">
+        <div>
+          <strong>Quick read</strong>
+          <p>{group.findings.length ? `${group.findings.length} item${group.findings.length === 1 ? "" : "s"} to review.` : group.emptyText}</p>
+        </div>
       </div>
 
       {group.aiReview ? (
         <div className={`teacher-ai-opinion concern-${group.aiReview.concern}`}>
           <strong>AI concern: {aiConcernLabel(group.aiReview.concern)} - {group.aiReview.concernScore}/10</strong>
-          <p>{group.aiReview.opinion}</p>
+          <p>{group.aiReview.summary || summariseAiOpinion(group.aiReview.opinion)}</p>
+          <details>
+            <summary>Read full AI review</summary>
+            <p>{group.aiReview.opinion}</p>
+          </details>
         </div>
       ) : null}
 
@@ -585,22 +617,27 @@ function ConcernGroupCard({ group }: { group: TeacherConcernGroup }) {
         <>
           <div className="finding-preview-list">
             {previewFindings.map((finding) => (
-              <a className="finding-preview-row" href={`#finding-${finding.id}`} key={finding.id}>
+              <a className="finding-preview-row" href={findingJumpHref(finding)} key={finding.id}>
                 <span className={`severity-dot ${finding.severity}`}>{severityLabel(finding.severity)}</span>
                 <strong>{plainFindingObservation(finding)}</strong>
+                <small>{findingLocationLabel(finding)}</small>
               </a>
             ))}
           </div>
-          <details className="group-detail-drawer">
-            <summary>
-              Review all {group.findings.length} finding{group.findings.length === 1 ? "" : "s"}
-            </summary>
-            <div className="teacher-finding-list">
-              {group.findings.map((finding) => (
-                <TeacherFindingCard finding={finding} key={finding.id} />
-              ))}
-            </div>
-          </details>
+          <div className="finding-group-stack">
+            {findingGroups.map((findingGroup) => (
+              <details className="group-detail-drawer" key={findingGroup.label}>
+                <summary>
+                  {findingGroup.label} <span>{findingGroup.findings.length}</span>
+                </summary>
+                <div className="teacher-finding-list">
+                  {findingGroup.findings.map((finding) => (
+                    <TeacherFindingCard finding={finding} key={finding.id} />
+                  ))}
+                </div>
+              </details>
+            ))}
+          </div>
         </>
       ) : (
         <p className="muted">{group.emptyText}</p>
@@ -614,7 +651,7 @@ function ConcernGroupCard({ group }: { group: TeacherConcernGroup }) {
           ))}
         </ul>
       </details>
-    </article>
+    </details>
   );
 }
 
@@ -648,7 +685,9 @@ function TeacherFindingCard({ finding }: { finding: LaisrReport["findings"][numb
           <dd>{finding.evidence}</dd>
         </div>
       </dl>
-      {range ? <a href={`#paragraph-${range.start}`}>View in document</a> : null}
+      <a href={range ? `#paragraph-${range.start}` : "#file-snapshot"}>
+        {range ? `View paragraph ${range.start}` : "View file snapshot"}
+      </a>
     </details>
   );
 }
@@ -742,6 +781,95 @@ function concernStatus(findings: LaisrReport["findings"]): TeacherConcernGroup["
   }
 
   return "clear";
+}
+
+function groupFindingsForNavigation(findings: LaisrReport["findings"]) {
+  const groups = new Map<string, LaisrReport["findings"]>();
+
+  for (const finding of findings) {
+    const label = findingGroupLabel(finding);
+    groups.set(label, [...(groups.get(label) || []), finding]);
+  }
+
+  return [...groups.entries()].map(([label, groupedFindings]) => ({
+    label,
+    findings: groupedFindings.sort((a, b) => severityRank(b.severity) - severityRank(a.severity))
+  }));
+}
+
+function findingGroupLabel(finding: LaisrReport["findings"][number]) {
+  if (finding.id.startsWith("text-sub-")) {
+    return "Suspicious word substitutions";
+  }
+
+  if (finding.id.startsWith("text-merge-") || finding.id.startsWith("text-compound-")) {
+    return "Merged compound words";
+  }
+
+  if (finding.id.startsWith("text-grammar-") || finding.id === "text-studies-is") {
+    return "Grammar or phrasing slips";
+  }
+
+  if (finding.id.startsWith("style-near-dup-") || finding.id === "style-transitions" || finding.id === "style-openers") {
+    return "Repeated or patterned writing";
+  }
+
+  if (finding.id.startsWith("ling-")) {
+    return "Complexity and style shifts";
+  }
+
+  if (finding.id.startsWith("compare-")) {
+    return "Differences from known writing";
+  }
+
+  if (finding.id.startsWith("metadata-")) {
+    return "Document property clues";
+  }
+
+  if (finding.id.startsWith("xml-rsid") || finding.id.includes("rsid")) {
+    return "Edit history clues";
+  }
+
+  if (finding.id.includes("browser") || finding.id.includes("hidden") || finding.id.includes("white")) {
+    return "Hidden or pasted-formatting clues";
+  }
+
+  if (finding.category === "Relationships and Embedded Objects") {
+    return "Links, embedded objects, and templates";
+  }
+
+  if (finding.category === "Package Forensics") {
+    return "Save/export clues";
+  }
+
+  return "Other findings";
+}
+
+function findingJumpHref(finding: LaisrReport["findings"][number]) {
+  const range = getFindingParagraphRange(finding, 9999);
+  return range ? `#paragraph-${range.start}` : "#file-snapshot";
+}
+
+function findingLocationLabel(finding: LaisrReport["findings"][number]) {
+  const range = getFindingParagraphRange(finding, 9999);
+
+  if (!range) {
+    return "File snapshot";
+  }
+
+  return range.start === range.end ? `Paragraph ${range.start}` : `Paragraphs ${range.start}-${range.end}`;
+}
+
+function findRootEditId(report: LaisrReport) {
+  const rootFinding = report.findings.find((finding) => finding.id === "xml-rsid-root");
+  const quotedValue = rootFinding?.evidence.match(/"([^"]+)"/)?.[1];
+
+  return quotedValue || "Not recorded";
+}
+
+function summariseAiOpinion(opinion: string) {
+  const firstSentence = opinion.trim().split(/(?<=[.!?])\s+/)[0] || opinion.trim();
+  return firstSentence.length > 150 ? `${firstSentence.slice(0, 147)}...` : firstSentence;
 }
 
 function combinedConcernStatus(
@@ -1681,10 +1809,12 @@ export function EvidenceChecklist({ report }: { report: LaisrReport }) {
 
 export function DocumentAnnotationView({
   findings,
-  report
+  report,
+  showAnnotations = true
 }: {
   findings?: LaisrReport["findings"];
   report: LaisrReport;
+  showAnnotations?: boolean;
 }) {
   const paragraphs = report.extractedTextPreview
     .split(/\n{2,}/)
@@ -1695,7 +1825,7 @@ export function DocumentAnnotationView({
   const fileAnnotations = scopedFindings.filter((finding) => !getFindingParagraphRange(finding, paragraphs.length));
 
   return (
-    <div className="annotation-layout">
+    <div className={showAnnotations ? "annotation-layout" : "annotation-layout document-only"}>
       <div className="document-reader" aria-label="Extracted document text">
         {paragraphs.length > 0 ? (
           paragraphs.map((paragraph, index) => {
@@ -1721,6 +1851,7 @@ export function DocumentAnnotationView({
         )}
       </div>
 
+      {showAnnotations ? (
       <aside className="annotation-panel" aria-label="Evidence annotations">
         <div className="annotation-group">
           <h3>Linked to text</h3>
@@ -1744,6 +1875,7 @@ export function DocumentAnnotationView({
           )}
         </div>
       </aside>
+      ) : null}
     </div>
   );
 }

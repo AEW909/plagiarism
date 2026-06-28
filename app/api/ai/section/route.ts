@@ -48,7 +48,7 @@ export async function POST(request: Request) {
           role: "user",
           content: JSON.stringify({
             task:
-              `${SECTION_PROMPTS[body.sectionId]} Return JSON only with keys concern, concernScore, and opinion. concern must be one of low, moderate, high, unavailable. concernScore must be an integer from 1 to 10, where 1 means no meaningful concern and 10 means strong concern. The opinion should explain the strongest concern, the strongest innocent explanation, and what an examiner could ask or check next.`,
+              `${SECTION_PROMPTS[body.sectionId]} Return JSON only with keys concern, concernScore, summary, and opinion. concern must be one of low, moderate, high, unavailable. concernScore must be an integer from 1 to 10, where 1 means no meaningful concern and 10 means strong concern. summary must be one plain-English sentence of 22 words or fewer for a busy teacher. opinion should give the fuller review: strongest concern, strongest innocent explanation, and what an examiner could ask or check next.`,
             payload
           })
         }
@@ -66,6 +66,9 @@ export async function POST(request: Request) {
       status: "completed",
       concern: normaliseConcern(parsed.concern),
       concernScore: clampScore(Number(parsed.concernScore)),
+      summary: typeof parsed.summary === "string" && parsed.summary.trim()
+        ? parsed.summary
+        : summariseOpinion(parsed.opinion),
       opinion: typeof parsed.opinion === "string" && parsed.opinion.trim()
         ? parsed.opinion
         : "AI returned no section opinion."
@@ -86,4 +89,13 @@ function normaliseConcern(value: unknown): SectionConcern {
   return value === "low" || value === "moderate" || value === "high" || value === "unavailable"
     ? value
     : "unavailable";
+}
+
+function summariseOpinion(value: unknown) {
+  if (typeof value !== "string" || !value.trim()) {
+    return "AI returned no short summary.";
+  }
+
+  const firstSentence = value.trim().split(/(?<=[.!?])\s+/)[0] || value.trim();
+  return firstSentence.length > 160 ? `${firstSentence.slice(0, 157)}...` : firstSentence;
 }

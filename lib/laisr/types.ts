@@ -131,6 +131,7 @@ export type SectionAiReview = {
   status: "completed" | "failed";
   concern: SectionConcern;
   concernScore: number;
+  summary?: string;
   opinion: string;
 };
 
