@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 48" role="img" aria-labelledby="title desc">
+  <title id="title">LAISR</title>
+  <desc id="desc">LAISR document review logo</desc>
+  <rect x="1" y="1" width="46" height="46" rx="10" fill="#eaf0f8" stroke="#d6dde5"/>
+  <path d="M13 8h16l8 8v24H13z" fill="none" stroke="#0d2137" stroke-width="2.6" stroke-linejoin="round"/>
+  <path d="M29 8v9h8" fill="none" stroke="#1a5276" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="24" cy="27" r="7.5" fill="none" stroke="#0d2137" stroke-width="2.6"/>
+  <path d="M29.5 32.5 36 39" fill="none" stroke="#1a5276" stroke-width="2.6" stroke-linecap="round"/>
+  <path d="m20 27 3 3 6.5-7.5" fill="none" stroke="#1e6b3c" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="60" y="32" fill="#0d2137" font-family="Inter, Arial, sans-serif" font-size="26" font-weight="800" letter-spacing="2">LAISR</text>
+</svg>

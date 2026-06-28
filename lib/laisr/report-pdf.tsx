@@ -2,7 +2,9 @@ import React from "react";
 import {
   Document,
   Page,
+  Path,
   StyleSheet,
+  Svg,
   Text,
   View,
   renderToBuffer
@@ -99,6 +101,53 @@ const styles = StyleSheet.create({
     fontFamily: "Helvetica-Bold",
     fontSize: 20,
     marginBottom: 12
+  },
+  pageHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    marginBottom: 14,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: colours.line
+  },
+  brand: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8
+  },
+  brandText: {
+    color: colours.navy,
+    fontFamily: "Helvetica-Bold",
+    fontSize: 11,
+    letterSpacing: 0.8
+  },
+  brandSubtext: {
+    color: colours.muted,
+    fontSize: 8
+  },
+  pdfLogoBox: {
+    width: 26,
+    height: 26,
+    borderRadius: 5,
+    backgroundColor: colours.blueBg,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  coverBrand: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 14
+  },
+  coverLogoBox: {
+    width: 42,
+    height: 42,
+    borderRadius: 8,
+    backgroundColor: "#ffffff",
+    alignItems: "center",
+    justifyContent: "center"
   },
   sectionBanner: {
     marginTop: 14,
@@ -219,9 +268,17 @@ function LaisrPdf({
     >
       <Page size="A4" style={[styles.page, styles.cover]} wrap>
         <View style={styles.coverBand}>
-          <Text style={styles.coverTitle}>Learning Authorship Integrity Signal Review</Text>
+          <View style={styles.coverBrand}>
+            <View style={styles.coverLogoBox}>
+              <PdfLogoMark size={30} />
+            </View>
+            <View>
+              <Text style={styles.coverTitle}>LAISR</Text>
+              <Text style={styles.coverSubtitle}>Document review</Text>
+            </View>
+          </View>
           <Text style={styles.coverSubtitle}>
-            Forensic indicators, interpretive review, counter-arguments, and viva preparation
+            Evidence summary, review judgement, and viva preparation
           </Text>
         </View>
         <View style={styles.coverBody}>
@@ -247,7 +304,7 @@ function LaisrPdf({
 
       <ReportPage title="Part 1 - Evidence Findings">
         <SummaryGrid report={report} />
-        <Text style={styles.sectionBanner}>Document Metadata</Text>
+        <SectionBanner>Document Metadata</SectionBanner>
         <MetadataRows
           rows={[
             ["Creator", report.metadata.creator],
@@ -264,11 +321,11 @@ function LaisrPdf({
             ["App version", report.metadata.appVersion]
           ]}
         />
-        <Text style={styles.sectionBanner}>Text-only AI Prose Opinion</Text>
+        <SectionBanner>Text-only AI Prose Opinion</SectionBanner>
         <Text style={styles.paragraph}>{report.aiReview.evidenceOpinion}</Text>
         {Object.entries(groupedFindings).map(([category, findings]) => (
           <View key={category}>
-            <Text style={styles.sectionBanner}>{category}</Text>
+            <SectionBanner>{category}</SectionBanner>
             {findings.map((finding) => (
               <FindingCard finding={finding} key={finding.id} />
             ))}
@@ -281,16 +338,16 @@ function LaisrPdf({
 
       <ReportPage title="Part 2 - Interpretation">
         <Text style={styles.paragraph}>{report.interpretation}</Text>
-        <Text style={styles.sectionBanner}>AI Evidence Synthesis</Text>
+        <SectionBanner>AI Evidence Synthesis</SectionBanner>
         <Text style={styles.paragraph}>{report.aiReview.opinion}</Text>
         <Text style={styles.paragraph}>{report.aiReview.assessment}</Text>
       </ReportPage>
 
       <ReportPage title="Part 3 - Counter-Argument And Assessment">
-        <Text style={styles.sectionBanner}>Counter-Argument</Text>
+        <SectionBanner>Counter-Argument</SectionBanner>
         <Text style={styles.paragraph}>{report.counterArgument}</Text>
         <Text style={styles.paragraph}>{report.aiReview.counterArgument}</Text>
-        <Text style={styles.sectionBanner}>Which Argument Holds Most Water</Text>
+        <SectionBanner>Which Argument Holds Most Water</SectionBanner>
         <Text style={styles.paragraph}>
           {finalRecommendation
             ? `${finalRecommendation.recommendation} (${finalRecommendation.concernScore}/10). ${finalRecommendation.rationale}`
@@ -323,13 +380,45 @@ function ReportPage({
 }) {
   return (
     <Page size="A4" style={styles.page} wrap>
+      <View style={styles.pageHeader} fixed>
+        <View style={styles.brand}>
+          <View style={styles.pdfLogoBox}>
+            <PdfLogoMark size={20} />
+          </View>
+          <View>
+            <Text style={styles.brandText}>LAISR</Text>
+            <Text style={styles.brandSubtext}>Document review</Text>
+          </View>
+        </View>
+        <Text style={styles.brandSubtext}>Confidential</Text>
+      </View>
       <Text style={styles.title}>{title}</Text>
       {children}
       <View style={styles.footer} fixed>
-        <Text>LAISR Academic Integrity Signal Review · Confidential</Text>
+        <Text>LAISR document review - Confidential</Text>
         <Text render={({ pageNumber }) => `Page ${pageNumber}`} />
       </View>
     </Page>
+  );
+}
+
+function PdfLogoMark({ size }: { size: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 40 40">
+      <Path d="M10 6h14l7 7v21H10z" stroke={colours.navy} strokeWidth={2.4} fill="none" strokeLinejoin="round" />
+      <Path d="M24 6v8h7" stroke={colours.blue} strokeWidth={2.4} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+      <Path d="M13 22a7 7 0 1 0 14 0a7 7 0 1 0 -14 0" stroke={colours.navy} strokeWidth={2.4} fill="none" />
+      <Path d="M25 27l6 6" stroke={colours.blue} strokeWidth={2.4} fill="none" strokeLinecap="round" />
+      <Path d="M17 22l3 3l6 -7" stroke={colours.green} strokeWidth={3} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
+}
+
+function SectionBanner({ children }: { children: React.ReactNode }) {
+  return (
+    <View wrap={false}>
+      <Text style={styles.sectionBanner}>{children}</Text>
+    </View>
   );
 }
 
@@ -337,7 +426,7 @@ function SummaryGrid({ report }: { report: LaisrReport }) {
   const finalRecommendation = report.finalRecommendation;
 
   return (
-    <View style={styles.summaryGrid}>
+    <View style={styles.summaryGrid} wrap={false}>
       <SummaryBox
         label={finalRecommendation ? "Recommendation" : "Status"}
         value={finalRecommendation ? finalRecommendation.recommendation : "Recommendation not generated"}
@@ -360,7 +449,7 @@ function SummaryBox({ label, value }: { label: string; value: string }) {
 
 function MetadataRows({ rows }: { rows: Array<[string, string]> }) {
   return (
-    <View style={styles.metaGrid}>
+    <View style={styles.metaGrid} wrap={false}>
       {rows.map(([label, value], index) => (
         <View style={[styles.metaRow, index === rows.length - 1 ? styles.lastMetaRow : {}]} key={label}>
           <Text style={styles.metaLabel}>{label}</Text>
@@ -376,7 +465,7 @@ function FindingCard({ finding }: { finding: Finding }) {
   const background = severityBackground(finding.severity);
 
   return (
-    <View style={[styles.finding, { borderLeftColor: colour, backgroundColor: background }]}>
+    <View style={[styles.finding, { borderLeftColor: colour, backgroundColor: background }]} wrap={false}>
       <Text style={[styles.findingTitle, { color: colour }]}>
         {finding.severity.toUpperCase()} · {finding.title}
       </Text>
