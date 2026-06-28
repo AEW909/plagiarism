@@ -8,6 +8,10 @@ import type { FinalRecommendation, LaisrReport, ReviewSectionId, SectionAiReview
 export type ReportTab = "document" | "overview" | ReviewSectionId;
 export type AppView = "home" | "single";
 export type WorkflowStepId = "upload" | "analyse" | "review" | "export";
+export type InitialAiReviewId = Exclude<ReviewSectionId, "summary">;
+export type AiReviewPlan = Record<InitialAiReviewId, boolean> & {
+  finalSynthesis: boolean;
+};
 export type AnalysisRunState =
   | "idle"
   | "upload_ready"
@@ -40,6 +44,13 @@ export function useLaisrReview() {
   const [finalRecommendation, setFinalRecommendation] = useState<FinalRecommendation | null>(null);
   const [summaryModalOpen, setSummaryModalOpen] = useState(false);
   const [summaryGenerating, setSummaryGenerating] = useState(false);
+  const [aiReviewPlan, setAiReviewPlan] = useState<AiReviewPlan>({
+    metadata: false,
+    textual: false,
+    comparative: false,
+    ai_prose: true,
+    finalSynthesis: true
+  });
 
   useEffect(() => {
     let active = true;
@@ -121,48 +132,25 @@ export function useLaisrReview() {
       let aiFailed = false;
       const selectedAiReviews: SectionAiReview[] = [];
       let nextFinalRecommendation: FinalRecommendation | null = null;
+      const selectedAiSectionIds = getSelectedInitialAiSections(aiReviewPlan, analysedReport);
 
-      if (aiConfig?.aiConfigured) {
-        setAnalysisStage("running_ai_text_review");
-        setSectionAiLoading({ ai_prose: true });
-
-        try {
-          const aiResponse = await fetch("/api/ai/section", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-              report: analysedReport,
-              sectionId: "ai_prose"
-            })
-          });
-          const aiPayload = await aiResponse.json();
-
-          if (!aiResponse.ok) {
-            throw new Error(aiPayload.error || "AI text review failed.");
-          }
-
-          selectedAiReviews.push(aiPayload);
-          setSectionAiReviews({ ai_prose: aiPayload });
-        } catch {
-          aiFailed = true;
-          setSectionAiReviews({
-            ai_prose: {
-              sectionId: "ai_prose",
-              status: "failed",
-              concern: "unavailable",
-              concernScore: 1,
-              opinion: "AI review could not be completed. The file checks are still available."
-            }
-          });
-        } finally {
-          setSectionAiLoading({ ai_prose: false });
+      if (aiConfig?.aiConfigured && (selectedAiSectionIds.length || aiReviewPlan.finalSynthesis)) {
+        if (selectedAiSectionIds.length) {
+          setAnalysisStage("running_ai_text_review");
+          setSectionAiLoading(sectionLoadingState(selectedAiSectionIds, true));
+          const aiResults = await Promise.all(
+            selectedAiSectionIds.map((sectionId) => runInitialSectionAi(analysedReport, sectionId))
+          );
+          const nextReviews = Object.fromEntries(aiResults.map((review) => [review.sectionId, review])) as Partial<Record<ReviewSectionId, SectionAiReview>>;
+          setSectionAiReviews(nextReviews);
+          setSectionAiLoading(sectionLoadingState(selectedAiSectionIds, false));
+          selectedAiReviews.push(...aiResults.filter((review) => review.status === "completed"));
+          aiFailed = aiResults.some((review) => review.status === "failed");
         }
 
         setAnalysisStage("running_final_synthesis");
 
-        if (!aiFailed) {
+        if (aiReviewPlan.finalSynthesis) {
           try {
             const finalResponse = await fetch("/api/ai/final", {
               method: "POST",
@@ -390,6 +378,13 @@ export function useLaisrReview() {
     setView("home");
   }
 
+  function updateAiReviewPlan(reviewId: keyof AiReviewPlan, enabled: boolean) {
+    setAiReviewPlan((current) => ({
+      ...current,
+      [reviewId]: enabled
+    }));
+  }
+
   function updateFile(nextFile: File | null) {
     setFile(nextFile);
     setAnalysisStage(nextFile ? "upload_ready" : "idle");
@@ -401,6 +396,7 @@ export function useLaisrReview() {
     activeTab,
     aiConfigured: Boolean(aiConfig?.aiConfigured),
     aiReviewInProgress,
+    aiReviewPlan,
     analysisStage,
     analyseDocument,
     authenticatedFile,
@@ -422,6 +418,7 @@ export function useLaisrReview() {
     sectionAiReviews,
     setActiveTab,
     setAuthenticatedFile,
+    setAiReviewPlan: updateAiReviewPlan,
     setCandidateId,
     setFile: updateFile,
     setIncludeVivaInPdf,
@@ -436,4 +433,52 @@ export function useLaisrReview() {
     visibleTabs,
     workflowStep
   };
+}
+
+function getSelectedInitialAiSections(plan: AiReviewPlan, report: LaisrReport): InitialAiReviewId[] {
+  return (["metadata", "textual", "comparative", "ai_prose"] as InitialAiReviewId[]).filter((sectionId) => {
+    if (!plan[sectionId]) {
+      return false;
+    }
+
+    if (sectionId === "comparative") {
+      return report.comparativeProfile.available;
+    }
+
+    return true;
+  });
+}
+
+function sectionLoadingState(sectionIds: InitialAiReviewId[], loading: boolean) {
+  return Object.fromEntries(sectionIds.map((sectionId) => [sectionId, loading])) as Partial<Record<ReviewSectionId, boolean>>;
+}
+
+async function runInitialSectionAi(report: LaisrReport, sectionId: InitialAiReviewId): Promise<SectionAiReview> {
+  try {
+    const response = await fetch("/api/ai/section", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        report,
+        sectionId
+      })
+    });
+    const payload = await response.json();
+
+    if (!response.ok) {
+      throw new Error(payload.error || "AI section review failed.");
+    }
+
+    return payload;
+  } catch (error) {
+    return {
+      sectionId,
+      status: "failed",
+      concern: "unavailable",
+      concernScore: 1,
+      opinion: error instanceof Error ? error.message : "AI section review failed."
+    };
+  }
 }

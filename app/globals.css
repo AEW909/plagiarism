@@ -269,6 +269,44 @@
   line-height: 1.65;
 }
 
+.teacher-rationale {
+  display: grid;
+  gap: 12px;
+  max-width: 860px;
+  margin-top: 18px;
+}
+
+.teacher-rationale-section {
+  display: grid;
+  gap: 6px;
+}
+
+.teacher-rationale-section strong {
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.teacher-rationale-section ul {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.teacher-rationale-section li {
+  line-height: 1.55;
+}
+
+.teacher-outcome .teacher-rationale-section strong {
+  color: rgba(255, 255, 255, 0.96);
+}
+
+.teacher-outcome .teacher-rationale-section li {
+  color: rgba(255, 255, 255, 0.8);
+}
+
 .outcome-score {
   display: grid;
   flex: 0 0 128px;
@@ -397,11 +435,88 @@
   gap: 10px;
 }
 
+.finding-preview-list {
+  display: grid;
+  gap: 8px;
+}
+
+.finding-preview-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  border: 1px solid rgba(26, 45, 64, 0.08);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #fff;
+  color: inherit;
+  text-decoration: none;
+}
+
+.finding-preview-row strong {
+  color: #27374a;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.severity-dot {
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: #e9eef5;
+  color: #27374a;
+  font-size: 0.68rem;
+  font-weight: 950;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.severity-dot.critical,
+.severity-dot.serious {
+  background: #fde4e1;
+  color: #8f2f2d;
+}
+
+.severity-dot.notable {
+  background: #fff1d7;
+  color: #8a550f;
+}
+
+.group-detail-drawer {
+  border-top: 1px solid rgba(26, 45, 64, 0.08);
+  padding-top: 12px;
+}
+
+.group-detail-drawer summary {
+  cursor: pointer;
+  color: var(--blue);
+  font-weight: 950;
+}
+
+.group-detail-drawer .teacher-finding-list {
+  margin-top: 12px;
+}
+
 .teacher-finding {
   border: 1px solid rgba(26, 45, 64, 0.1);
   border-radius: 10px;
   padding: 14px;
   background: #fff;
+}
+
+.teacher-finding-summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.teacher-finding-summary::-webkit-details-marker,
+.teacher-document-drawer summary::-webkit-details-marker,
+.group-detail-drawer summary::-webkit-details-marker {
+  display: none;
+}
+
+.teacher-finding-summary p {
+  margin: 0;
+  color: #526173;
 }
 
 .teacher-finding-title {
@@ -424,7 +539,7 @@
 .teacher-finding dl {
   display: grid;
   gap: 10px;
-  margin: 0;
+  margin: 12px 0 0;
 }
 
 .teacher-finding dt {
@@ -770,6 +885,63 @@ button {
   display: grid;
   gap: 14px;
   padding: 20px;
+}
+
+.ai-plan-panel {
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(49, 95, 140, 0.18);
+  border-radius: 12px;
+  padding: 14px;
+  background: #f7fafc;
+}
+
+.ai-plan-panel > div {
+  display: grid;
+  gap: 4px;
+}
+
+.ai-plan-panel > div strong {
+  color: var(--ink);
+}
+
+.ai-plan-panel > div span {
+  color: var(--muted);
+  font-size: 0.86rem;
+  line-height: 1.4;
+}
+
+.ai-plan-toggle {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  border-radius: 10px;
+  padding: 9px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 0.86rem;
+}
+
+.ai-plan-toggle input {
+  width: 18px;
+  min-height: 18px;
+  margin-top: 2px;
+  accent-color: var(--blue);
+}
+
+.ai-plan-toggle span {
+  display: grid;
+  gap: 3px;
+}
+
+.ai-plan-toggle small {
+  color: var(--muted);
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.ai-plan-toggle:has(input:disabled) {
+  opacity: 0.55;
 }
 
 label {

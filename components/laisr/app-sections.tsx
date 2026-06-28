@@ -30,6 +30,7 @@ import {
 } from "@/lib/laisr/finding-presentation";
 import type { AlgorithmicSection } from "@/lib/laisr/sections";
 import type { FinalRecommendation, LaisrReport, ReviewSectionId, SectionAiReview } from "@/lib/laisr/types";
+import type { AiReviewPlan } from "./use-laisr-review";
 import {
   OutcomeScale,
   SummaryItem
@@ -79,7 +80,9 @@ export function HomeOptions({ onSingleUpload }: { onSingleUpload: () => void }) 
 }
 
 export function SingleUploadScreen({
+  aiConfigured,
   aiLoading,
+  aiReviewPlan,
   analysisStage,
   authenticatedFile,
   candidateId,
@@ -89,12 +92,15 @@ export function SingleUploadScreen({
   subject,
   onAnalyse,
   onAuthenticatedFileChange,
+  onAiReviewPlanChange,
   onBack,
   onCandidateIdChange,
   onFileChange,
   onSubjectChange
 }: {
+  aiConfigured: boolean;
   aiLoading: boolean;
+  aiReviewPlan: AiReviewPlan;
   analysisStage:
     | "idle"
     | "upload_ready"
@@ -112,6 +118,7 @@ export function SingleUploadScreen({
   subject: string;
   onAnalyse: () => void;
   onAuthenticatedFileChange: (file: File | null) => void;
+  onAiReviewPlanChange: (reviewId: keyof AiReviewPlan, enabled: boolean) => void;
   onBack: () => void;
   onCandidateIdChange: (value: string) => void;
   onFileChange: (file: File | null) => void;
@@ -170,6 +177,53 @@ export function SingleUploadScreen({
               onChange={(event) => onSubjectChange(event.target.value)}
             />
           </label>
+
+          <div className="ai-plan-panel" aria-label="AI review options">
+            <div>
+              <strong>AI review options</strong>
+              <span>
+                {aiConfigured
+                  ? "Choose which AI opinions to add after the file checks."
+                  : "AI options are unavailable until an OpenAI key is configured."}
+              </span>
+            </div>
+            <AiPlanToggle
+              checked={aiReviewPlan.ai_prose}
+              disabled={!aiConfigured}
+              label="AI reads the essay text"
+              help="The model sees the visible essay text only and comments on possible copying, close paraphrase, AI-written passages, or inconsistent authorship."
+              onChange={(checked) => onAiReviewPlanChange("ai_prose", checked)}
+            />
+            <AiPlanToggle
+              checked={aiReviewPlan.metadata}
+              disabled={!aiConfigured}
+              label="AI explains file-history clues"
+              help="The model sees only the file-history findings and turns them into a plain-language opinion."
+              onChange={(checked) => onAiReviewPlanChange("metadata", checked)}
+            />
+            <AiPlanToggle
+              checked={aiReviewPlan.textual}
+              disabled={!aiConfigured}
+              label="AI explains writing-pattern clues"
+              help="The model sees only the writing-pattern findings, such as odd word choices, repetition, and complexity shifts."
+              onChange={(checked) => onAiReviewPlanChange("textual", checked)}
+            />
+            <AiPlanToggle
+              checked={aiReviewPlan.comparative}
+              disabled={!aiConfigured || !authenticatedFile}
+              label="AI compares known writing"
+              help="Available when you add a known writing sample. The model compares the comparison results, not the raw file history."
+              onChange={(checked) => onAiReviewPlanChange("comparative", checked)}
+            />
+            <AiPlanToggle
+              checked={aiReviewPlan.finalSynthesis}
+              disabled={!aiConfigured}
+              label="AI helps with the final weighing"
+              help="The model weighs the completed findings and selected AI opinions into a teacher-facing viva recommendation."
+              onChange={(checked) => onAiReviewPlanChange("finalSynthesis", checked)}
+            />
+          </div>
+
           <button className="primary-button" type="button" disabled={loading} onClick={onAnalyse}>
             {loading ? <Loader2 className="spin" size={18} /> : <FileSearch size={18} />}
             {loading ? "Analysing" : "Start review"}
@@ -188,6 +242,35 @@ export function SingleUploadScreen({
   );
 }
 
+function AiPlanToggle({
+  checked,
+  disabled,
+  help,
+  label,
+  onChange
+}: {
+  checked: boolean;
+  disabled: boolean;
+  help: string;
+  label: string;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className="ai-plan-toggle">
+      <input
+        checked={checked && !disabled}
+        disabled={disabled}
+        type="checkbox"
+        onChange={(event) => onChange(event.target.checked)}
+      />
+      <span>
+        <strong>{label}</strong>
+        <small>{help}</small>
+      </span>
+    </label>
+  );
+}
+
 type TeacherAnalysisState =
   | "idle"
   | "upload_ready"
@@ -200,15 +283,19 @@ type TeacherAnalysisState =
 
 export function AnalysisProgressScreen({
   aiConfigured,
+  aiReviewPlan,
   error,
   fileName,
   stage
 }: {
   aiConfigured: boolean;
+  aiReviewPlan: AiReviewPlan;
   error: string;
   fileName?: string;
   stage: TeacherAnalysisState;
 }) {
+  const selectedSectionAiCount = (["metadata", "textual", "comparative", "ai_prose"] as const)
+    .filter((sectionId) => aiReviewPlan[sectionId]).length;
   const steps = [
     {
       id: "file",
@@ -219,18 +306,26 @@ export function AnalysisProgressScreen({
     },
     {
       id: "ai",
-      label: aiConfigured ? "Asking AI for a text-only opinion" : "AI review unavailable",
+      label: aiConfigured
+        ? selectedSectionAiCount
+          ? `Running ${selectedSectionAiCount} selected AI review${selectedSectionAiCount === 1 ? "" : "s"}`
+          : "No section AI reviews selected"
+        : "AI review unavailable",
       description: aiConfigured
-        ? "The model sees the essay text only, not the file-history checks."
+        ? selectedSectionAiCount
+          ? "Selected AI opinions run after the file checks and use only their assigned evidence."
+          : "LAISR will move straight from file checks to final weighing."
         : "No OpenAI key is configured, so LAISR will use file checks only.",
       active: stage === "running_ai_text_review",
       complete: stage === "running_final_synthesis" || stage === "complete",
-      skipped: !aiConfigured || stage === "partial_no_ai"
+      skipped: !aiConfigured || selectedSectionAiCount === 0 || stage === "partial_no_ai"
     },
     {
       id: "summary",
-      label: "Preparing the viva recommendation",
-      description: "Weighing the completed evidence streams into a teacher-facing triage outcome.",
+      label: aiReviewPlan.finalSynthesis && aiConfigured ? "AI is helping with final weighing" : "Preparing the viva recommendation",
+      description: aiReviewPlan.finalSynthesis && aiConfigured
+        ? "The model weighs the completed evidence streams into a teacher-facing triage outcome."
+        : "LAISR is using the completed scores to create a teacher-facing triage outcome.",
       active: stage === "running_final_synthesis",
       complete: stage === "complete" || stage === "partial_no_ai"
     }
@@ -280,7 +375,6 @@ export function AnalysisProgressScreen({
 
 export function TeacherReviewDashboard({
   aiConfigured,
-  aiReview,
   analysisStage,
   finalRecommendation,
   includeVivaInPdf,
@@ -289,10 +383,10 @@ export function TeacherReviewDashboard({
   onReset,
   onToggleViva,
   pdfLoading,
-  report
+  report,
+  sectionAiReviews
 }: {
   aiConfigured: boolean;
-  aiReview?: SectionAiReview;
   analysisStage: TeacherAnalysisState;
   finalRecommendation: FinalRecommendation | null;
   includeVivaInPdf: boolean;
@@ -302,8 +396,9 @@ export function TeacherReviewDashboard({
   onToggleViva: (value: boolean) => void;
   pdfLoading: boolean;
   report: LaisrReport;
+  sectionAiReviews: Partial<Record<ReviewSectionId, SectionAiReview>>;
 }) {
-  const groups = buildTeacherConcernGroups(report, aiReview, aiConfigured);
+  const groups = buildTeacherConcernGroups(report, sectionAiReviews, aiConfigured);
   const vivaRecommended =
     finalRecommendation?.recommendation === "Viva recommended" ||
     finalRecommendation?.recommendation === "Strong viva recommended";
@@ -321,11 +416,11 @@ export function TeacherReviewDashboard({
         <div>
           <p className="eyebrow">Recommendation</p>
           <h1>{finalRecommendation ? directRecommendationLabel(finalRecommendation.recommendation) : "Recommendation pending"}</h1>
-          <p>
-            {finalRecommendation
-              ? finalRecommendation.rationale
-              : "LAISR has not produced a final viva recommendation yet."}
-          </p>
+          {finalRecommendation ? (
+            <TeacherRationale text={finalRecommendation.rationale} />
+          ) : (
+            <p>LAISR has not produced a final viva recommendation yet.</p>
+          )}
         </div>
         <div className="outcome-score">
           <span>{finalRecommendation?.concernScore ?? "-"}</span>
@@ -467,6 +562,8 @@ function ReviewStatusHeader({
 }
 
 function ConcernGroupCard({ group }: { group: TeacherConcernGroup }) {
+  const previewFindings = [...group.findings].sort((a, b) => severityRank(b.severity) - severityRank(a.severity)).slice(0, 3);
+
   return (
     <article className={`concern-card status-${group.status}`}>
       <div className="concern-card-head">
@@ -485,11 +582,26 @@ function ConcernGroupCard({ group }: { group: TeacherConcernGroup }) {
       ) : null}
 
       {group.findings.length > 0 ? (
-        <div className="teacher-finding-list">
-          {group.findings.map((finding) => (
-            <TeacherFindingCard finding={finding} key={finding.id} />
-          ))}
-        </div>
+        <>
+          <div className="finding-preview-list">
+            {previewFindings.map((finding) => (
+              <a className="finding-preview-row" href={`#finding-${finding.id}`} key={finding.id}>
+                <span className={`severity-dot ${finding.severity}`}>{severityLabel(finding.severity)}</span>
+                <strong>{plainFindingObservation(finding)}</strong>
+              </a>
+            ))}
+          </div>
+          <details className="group-detail-drawer">
+            <summary>
+              Review all {group.findings.length} finding{group.findings.length === 1 ? "" : "s"}
+            </summary>
+            <div className="teacher-finding-list">
+              {group.findings.map((finding) => (
+                <TeacherFindingCard finding={finding} key={finding.id} />
+              ))}
+            </div>
+          </details>
+        </>
       ) : (
         <p className="muted">{group.emptyText}</p>
       )}
@@ -510,19 +622,18 @@ function TeacherFindingCard({ finding }: { finding: LaisrReport["findings"][numb
   const range = getFindingParagraphRange(finding, 9999);
 
   return (
-    <article className={`teacher-finding ${finding.severity}`}>
-      <div className="teacher-finding-title">
-        <span>{severityLabel(finding.severity)}</span>
-        <strong>{finding.title}</strong>
-      </div>
+    <details className={`teacher-finding ${finding.severity}`} id={`finding-${finding.id}`}>
+      <summary className="teacher-finding-summary">
+        <div className="teacher-finding-title">
+          <span>{severityLabel(finding.severity)}</span>
+          <strong>{finding.title}</strong>
+        </div>
+        <p>{plainFindingObservation(finding)}</p>
+      </summary>
       <dl>
         <div>
-          <dt>What we found</dt>
-          <dd>{plainFindingObservation(finding)}</dd>
-        </div>
-        <div>
           <dt>Why it may matter</dt>
-          <dd>{finding.interpretation}</dd>
+          <dd>{plainFindingSummary(finding)}</dd>
         </div>
         <div>
           <dt>What else could explain it</dt>
@@ -532,15 +643,19 @@ function TeacherFindingCard({ finding }: { finding: LaisrReport["findings"][numb
           <dt>What to ask in viva</dt>
           <dd>{finding.vivaAngle}</dd>
         </div>
+        <div>
+          <dt>Deeper detail</dt>
+          <dd>{finding.evidence}</dd>
+        </div>
       </dl>
       {range ? <a href={`#paragraph-${range.start}`}>View in document</a> : null}
-    </article>
+    </details>
   );
 }
 
 function buildTeacherConcernGroups(
   report: LaisrReport,
-  aiReview: SectionAiReview | undefined,
+  sectionAiReviews: Partial<Record<ReviewSectionId, SectionAiReview>>,
   aiConfigured: boolean
 ): TeacherConcernGroup[] {
   const fileFindings = report.findings.filter((finding) =>
@@ -550,15 +665,22 @@ function buildTeacherConcernGroups(
     ["Textual Anomalies", "Stylometric Indicators", "Linguistic Consistency"].includes(finding.category)
   );
   const comparisonFindings = report.findings.filter((finding) => finding.category === "Authenticated Writing Comparison");
+  const fileStatus = combinedConcernStatus(fileFindings, sectionAiReviews.metadata);
+  const writingStatus = combinedConcernStatus(writingFindings, sectionAiReviews.textual);
+  const comparisonStatus = report.comparativeProfile.available
+    ? combinedConcernStatus(comparisonFindings, sectionAiReviews.comparative)
+    : "clear";
+  const proseStatus = statusFromAiReview(sectionAiReviews.ai_prose);
 
   return [
     {
       id: "file",
       title: "How the file was made",
       description: "Checks whether the Word file shows unusual editing, pasting, formatting, hidden text, or embedded-content clues.",
-      status: concernStatus(fileFindings),
-      statusLabel: concernStatusLabel(fileFindings),
+      status: fileStatus,
+      statusLabel: concernStatusText(fileStatus),
       findings: fileFindings,
+      aiReview: sectionAiReviews.metadata,
       technicalChecks: ["Document properties", "file package timestamps", "edit-session markers", "hidden text", "browser paste traces", "embedded objects"],
       emptyText: "No notable file-history concerns were found."
     },
@@ -566,9 +688,10 @@ function buildTeacherConcernGroups(
       id: "writing",
       title: "How the writing behaves",
       description: "Checks whether sections of the essay look unusually repetitive, inconsistent, heavily smoothed, or visibly patched together.",
-      status: concernStatus(writingFindings),
-      statusLabel: concernStatusLabel(writingFindings),
+      status: writingStatus,
+      statusLabel: concernStatusText(writingStatus),
       findings: writingFindings,
+      aiReview: sectionAiReviews.textual,
       technicalChecks: ["odd substitutions", "merged words", "repeated paragraphs", "sentence patterns", "complexity shifts", "formal wording spikes"],
       emptyText: "No notable writing-pattern concerns were found."
     },
@@ -578,9 +701,10 @@ function buildTeacherConcernGroups(
       description: report.comparativeProfile.available
         ? "Compares this submission with the known student writing sample you supplied."
         : "No known writing sample was supplied, so this comparison was not run.",
-      status: report.comparativeProfile.available ? concernStatus(comparisonFindings) : "clear",
-      statusLabel: report.comparativeProfile.available ? concernStatusLabel(comparisonFindings) : "Clear",
+      status: comparisonStatus,
+      statusLabel: concernStatusText(comparisonStatus),
       findings: comparisonFindings,
+      aiReview: sectionAiReviews.comparative,
       technicalChecks: ["sentence length", "word length", "type-token ratio", "formal wording", "passive voice", "transition density"],
       emptyText: report.comparativeProfile.available
         ? "The submitted writing was broadly consistent with the known sample."
@@ -592,26 +716,10 @@ function buildTeacherConcernGroups(
       description: aiConfigured
         ? "AI reviewed only the essay text for source-use, authorship, paraphrasing, and AI-writing indicators."
         : "AI review was unavailable because no OpenAI key is configured.",
-      status: aiReview?.status === "completed"
-        ? aiReview.concern === "high"
-          ? "high"
-          : aiReview.concern === "moderate"
-            ? "concern"
-            : aiReview.concern === "low"
-              ? "check"
-              : "clear"
-        : "clear",
-      statusLabel: aiReview?.status === "completed"
-        ? aiReview.concern === "high"
-          ? "High concern"
-          : aiReview.concern === "moderate"
-            ? "Concern"
-            : aiReview.concern === "low"
-              ? "Check"
-              : "Clear"
-        : "Clear",
+      status: proseStatus,
+      statusLabel: concernStatusText(proseStatus),
       findings: [],
-      aiReview,
+      aiReview: sectionAiReviews.ai_prose,
       technicalChecks: ["visible essay text only", "source-use indicators", "close paraphrase indicators", "AI-assisted writing indicators", "authorship consistency"],
       emptyText: aiConfigured
         ? "AI did not return a completed text-only concern."
@@ -636,9 +744,141 @@ function concernStatus(findings: LaisrReport["findings"]): TeacherConcernGroup["
   return "clear";
 }
 
-function concernStatusLabel(findings: LaisrReport["findings"]): TeacherConcernGroup["statusLabel"] {
-  const status = concernStatus(findings);
+function combinedConcernStatus(
+  findings: LaisrReport["findings"],
+  aiReview?: SectionAiReview
+): TeacherConcernGroup["status"] {
+  const algorithmicStatus = concernStatus(findings);
+  const aiStatusValue = statusFromAiReview(aiReview);
+
+  return statusRank(aiStatusValue) > statusRank(algorithmicStatus) ? aiStatusValue : algorithmicStatus;
+}
+
+function statusFromAiReview(aiReview?: SectionAiReview): TeacherConcernGroup["status"] {
+  if (aiReview?.status !== "completed") {
+    return "clear";
+  }
+
+  if (aiReview.concern === "high") {
+    return "high";
+  }
+
+  if (aiReview.concern === "moderate") {
+    return "concern";
+  }
+
+  if (aiReview.concern === "low") {
+    return "check";
+  }
+
+  return "clear";
+}
+
+function concernStatusText(status: TeacherConcernGroup["status"]): TeacherConcernGroup["statusLabel"] {
   return status === "high" ? "High concern" : status === "concern" ? "Concern" : status === "check" ? "Check" : "Clear";
+}
+
+function statusRank(status: TeacherConcernGroup["status"]) {
+  return {
+    clear: 0,
+    check: 1,
+    concern: 2,
+    high: 3
+  }[status];
+}
+
+function severityRank(severity: LaisrReport["findings"][number]["severity"]) {
+  if (severity === "critical") {
+    return 4;
+  }
+
+  if (severity === "serious") {
+    return 3;
+  }
+
+  if (severity === "notable") {
+    return 2;
+  }
+
+  return 1;
+}
+
+function TeacherRationale({ text }: { text: string }) {
+  const sections = parseTeacherRationale(text);
+
+  return (
+    <div className="teacher-rationale">
+      {sections.map((section) => (
+        <section className="teacher-rationale-section" key={section.title}>
+          <strong>{section.title}</strong>
+          <ul>
+            {section.bullets.map((bullet, index) => (
+              <li key={`${section.title}-${index}`}>{bullet}</li>
+            ))}
+          </ul>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+function parseTeacherRationale(text: string) {
+  const labels = ["Bottom line", "Main reasons", "Other explanations", "Viva focus"];
+  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const sections: Array<{ title: string; bullets: string[] }> = [];
+  let current: { title: string; bullets: string[] } | null = null;
+
+  for (const line of lines) {
+    const label = labels.find((item) => line.replace(/:$/, "").toLowerCase() === item.toLowerCase());
+
+    if (label) {
+      current = { title: label, bullets: [] };
+      sections.push(current);
+      continue;
+    }
+
+    if (current) {
+      current.bullets.push(cleanRationaleBullet(line));
+    }
+  }
+
+  const labelledSections = sections
+    .map((section) => ({ ...section, bullets: section.bullets.filter(Boolean).slice(0, 3) }))
+    .filter((section) => section.bullets.length);
+
+  return labelledSections.length ? labelledSections : fallbackTeacherRationale(text);
+}
+
+function fallbackTeacherRationale(text: string) {
+  const sentences = text.replace(/\s+/g, " ").split(/(?<=[.!?])\s+/).map((sentence) => sentence.trim()).filter(Boolean);
+  const vivaSentences = sentences.filter((sentence) => /viva|ask|draft|notes|version|question|explain/i.test(sentence));
+  const explanationSentences = sentences.filter((sentence) => /however|but|can|could|common|explanation|innocent|normal/i.test(sentence));
+  const reasonSentences = sentences
+    .filter((sentence) => !vivaSentences.includes(sentence) && !explanationSentences.includes(sentence))
+    .slice(0, 2);
+
+  return [
+    {
+      title: "Bottom line",
+      bullets: [vivaSentences[0] || sentences[0] || "Review the evidence before deciding next steps."]
+    },
+    {
+      title: "Main reasons",
+      bullets: reasonSentences.length ? reasonSentences : sentences.slice(0, 2)
+    },
+    {
+      title: "Other explanations",
+      bullets: explanationSentences.slice(0, 2)
+    },
+    {
+      title: "Viva focus",
+      bullets: vivaSentences.slice(0, 2)
+    }
+  ].filter((section) => section.bullets.length);
+}
+
+function cleanRationaleBullet(line: string) {
+  return line.replace(/^[-*•]\s*/, "").trim();
 }
 
 function directRecommendationLabel(recommendation: FinalRecommendation["recommendation"]) {
@@ -801,7 +1041,7 @@ export function SummaryRecommendationTab({
           <CheckCircle2 size={18} />
           Final recommendation
         </h2>
-        <p>{finalRecommendation.rationale}</p>
+        <TeacherRationale text={finalRecommendation.rationale} />
         <p className="muted">
           Included AI section opinions: {finalRecommendation.includedAiSections.length
             ? finalRecommendation.includedAiSections.map(sectionLabel).join(", ")

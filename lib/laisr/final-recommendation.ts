@@ -35,10 +35,7 @@ export function buildLocalFinalRecommendation(
     source: "algorithmic",
     recommendation: recommendationFromScore(concernScore),
     concernScore,
-    rationale:
-      `This summary was generated without a new final AI call. It weighs the algorithmic section scores` +
-      `${aiScores.length ? " and the selected completed AI concern scores" : ""}. ` +
-      `The result is a triage recommendation only; it should be read alongside the underlying evidence and possible innocent explanations.`,
+    rationale: buildPlainLocalRationale(recommendationFromScore(concernScore), concernScore, aiScores.length),
     includedAiSections: selectedAiReviews.map((review) => review.sectionId),
     includedFinalAiOpinion: false
   };
@@ -75,4 +72,41 @@ function algorithmicSectionScore(tone: "clear" | "watch" | "moderate" | "high" |
   }
 
   return 0;
+}
+
+function buildPlainLocalRationale(
+  recommendation: FinalRecommendation["recommendation"],
+  concernScore: number,
+  aiScoreCount: number
+) {
+  return [
+    "Bottom line:",
+    `- ${plainRecommendationSentence(recommendation)}`,
+    "Main reasons:",
+    `- The completed checks give an overall concern score of ${concernScore}/10.`,
+    aiScoreCount
+      ? "- Completed AI concern scores were included in the weighing."
+      : "- No final AI weighing was used for this recommendation.",
+    "Other explanations:",
+    "- File and writing clues can come from normal drafting, cloud tools, templates, editing support, or exports.",
+    "Viva focus:",
+    "- Ask the student to explain any highlighted sections in their own words.",
+    "- Ask for drafts, notes, or version history if available."
+  ].join("\n");
+}
+
+function plainRecommendationSentence(recommendation: FinalRecommendation["recommendation"]) {
+  if (recommendation === "No significant indicators detected") {
+    return "No viva is indicated from the checks completed.";
+  }
+
+  if (recommendation === "Examiner review recommended") {
+    return "Teacher review is suggested before deciding whether a viva is needed.";
+  }
+
+  if (recommendation === "Strong viva recommended") {
+    return "A viva is strongly recommended to check authorship and understanding.";
+  }
+
+  return "A focused viva is recommended to check authorship and understanding.";
 }

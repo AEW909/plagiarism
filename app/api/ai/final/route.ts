@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { buildLocalFinalRecommendation, clampScore, recommendationFromScore } from "@/lib/laisr/final-recommendation";
+import { plainFindingObservation, plainFindingSummary } from "@/lib/laisr/finding-presentation";
 import { buildAlgorithmicSections } from "@/lib/laisr/sections";
 import type { FinalRecommendation, LaisrReport, SectionAiReview } from "@/lib/laisr/types";
 
@@ -33,12 +34,11 @@ export async function POST(request: Request) {
         summary: section.summary,
         findings: section.findings.map((finding) => ({
           severity: finding.severity,
-          category: finding.category,
-          title: finding.title,
-          evidence: finding.evidence,
-          interpretation: finding.interpretation,
-          counterArgument: finding.counterArgument,
-          normalRange: finding.normalRange
+          group: teacherGroupForCategory(finding.category),
+          whatWasFound: plainFindingObservation(finding),
+          whyItMayMatter: plainFindingSummary(finding),
+          otherPossibleExplanation: finding.counterArgument,
+          vivaFollowUp: finding.vivaAngle
         }))
       })),
       selectedAiReviews: selectedAiReviews.map((review) => ({
@@ -57,13 +57,13 @@ export async function POST(request: Request) {
         {
           role: "developer",
           content:
-            "You are an academic integrity review assistant. Produce a cautious triage recommendation, not a misconduct finding. Weigh reliability, innocent explanations, clustering, and viva usefulness. Do not ask for or infer from raw essay text; use only the supplied evidence summaries and selected AI section opinions."
+            "You are an academic integrity review assistant writing for a busy classroom teacher, not a forensic specialist. Produce a direct viva-triage recommendation, not a misconduct finding. Use only the supplied evidence summaries and selected AI section opinions. Use plain English. Avoid technical terms such as XML, RSID, stylometric, linguistic, provenance, probative, deterministic, clustered, cross-tool, or innocuous unless the word is essential; if it is essential, explain it in ordinary language."
         },
         {
           role: "user",
           content: JSON.stringify({
             task:
-              "Return JSON only with keys recommendation, concernScore, and rationale. recommendation must be one of: No significant indicators detected, Examiner review recommended, Viva recommended, Strong viva recommended. concernScore must be an integer from 1 to 10. The rationale should explain what evidence carried most weight, what may be innocuous, and what a fair next step would be.",
+              "Return JSON only with keys recommendation, concernScore, and rationale. recommendation must be one of: No significant indicators detected, Examiner review recommended, Viva recommended, Strong viva recommended. concernScore must be an integer from 1 to 10. The rationale must be under 130 words and formatted exactly with these labels and bullets: Bottom line:, Main reasons:, Other explanations:, Viva focus:. Use short sentences. No single paragraph. Do not list more than three main reasons. Say what the teacher should do next. Use phrases such as file history clues, pasted from another tool, unusual word choices, repeated wording, or writing-style changes instead of specialist jargon.",
             payload
           })
         }
@@ -111,4 +111,20 @@ function normaliseRecommendation(
   }
 
   return recommendationFromScore(score);
+}
+
+function teacherGroupForCategory(category: string) {
+  if (category === "Document Metadata" || category === "Package Forensics" || category === "XML Forensics" || category === "Relationships and Embedded Objects") {
+    return "How the file was made";
+  }
+
+  if (category === "Textual Anomalies" || category === "Stylometric Indicators" || category === "Linguistic Consistency") {
+    return "How the writing behaves";
+  }
+
+  if (category === "Authenticated Writing Comparison") {
+    return "How it compares with known work";
+  }
+
+  return "Other review signal";
 }

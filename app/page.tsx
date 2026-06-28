@@ -45,6 +45,7 @@ export default function Home() {
       {isRunning ? (
         <AnalysisProgressScreen
           aiConfigured={review.aiConfigured}
+          aiReviewPlan={review.aiReviewPlan}
           error={review.error}
           fileName={review.file?.name}
           stage={review.analysisStage}
@@ -52,7 +53,6 @@ export default function Home() {
       ) : review.report ? (
         <TeacherReviewDashboard
           aiConfigured={review.aiConfigured}
-          aiReview={review.sectionAiReviews.ai_prose}
           analysisStage={review.analysisStage}
           finalRecommendation={review.finalRecommendation}
           includeVivaInPdf={review.includeVivaInPdf}
@@ -62,13 +62,16 @@ export default function Home() {
           onToggleViva={review.setIncludeVivaInPdf}
           pdfLoading={review.pdfLoading}
           report={review.report}
+          sectionAiReviews={review.sectionAiReviews}
         />
       ) : (
         <>
           {review.view === "home" ? <HomeOptions onSingleUpload={() => review.setView("single")} /> : null}
           {review.view === "single" ? (
             <SingleUploadScreen
+              aiConfigured={review.aiConfigured}
               aiLoading={false}
+              aiReviewPlan={review.aiReviewPlan}
               analysisStage={review.analysisStage}
               authenticatedFile={review.authenticatedFile}
               candidateId={review.candidateId}
@@ -78,6 +81,7 @@ export default function Home() {
               subject={review.subject}
               onAnalyse={review.analyseDocument}
               onAuthenticatedFileChange={review.setAuthenticatedFile}
+              onAiReviewPlanChange={review.setAiReviewPlan}
               onBack={() => review.setView("home")}
               onCandidateIdChange={review.setCandidateId}
               onFileChange={review.setFile}
