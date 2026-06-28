@@ -428,6 +428,8 @@ export function TeacherReviewDashboard({
         </div>
       </section>
 
+      <ReviewPatternMap report={report} />
+
       <section className="review-split">
         <aside className="review-left-rail" aria-label="Evidence navigation">
           <div className="review-left-heading">
@@ -494,6 +496,39 @@ export function TeacherReviewDashboard({
           </button>
         </div>
       </section>
+    </section>
+  );
+}
+
+function ReviewPatternMap({ report }: { report: LaisrReport }) {
+  const segments = report.linguisticProfile.segments;
+  const complexitySpikes = segments.filter((segment) => segment.complexityBand !== "normal").length;
+  const registerSpikes = segments.filter((segment) => segment.registerBand === "high").length;
+  const passiveSpikes = segments.filter((segment) => segment.passiveBand === "high").length;
+
+  if (segments.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className="review-pattern-card">
+      <div className="review-pattern-copy">
+        <p className="eyebrow">Writing pattern map</p>
+        <h2>Where the writing changes shape</h2>
+        <p>
+          Each block is a section of the document. Colour and outlines show where complexity, formal wording,
+          or passive phrasing stands out from the document&apos;s usual pattern.
+        </p>
+      </div>
+      <div className="review-pattern-map">
+        <LinguisticMap report={report} />
+      </div>
+      <div className="review-pattern-stats" aria-label="Writing pattern summary">
+        <SummaryItem label="Sections" value={String(segments.length)} />
+        <SummaryItem label="Complexity shifts" value={String(complexitySpikes)} />
+        <SummaryItem label="Formal spikes" value={String(registerSpikes)} />
+        <SummaryItem label="Passive spikes" value={String(passiveSpikes)} />
+      </div>
     </section>
   );
 }

@@ -122,10 +122,10 @@ export function useLaisrReview() {
         method: "POST",
         body: formData
       });
-      const payload = await response.json();
+      const payload = await readApiJson<LaisrReport | { error?: string }>(response);
 
       if (!response.ok) {
-        throw new Error(payload.error || "Analysis failed.");
+        throw new Error(apiError(payload) || "Analysis failed.");
       }
 
       const analysedReport = payload as LaisrReport;
@@ -162,13 +162,13 @@ export function useLaisrReview() {
                 selectedAiReviews
               })
             });
-            const finalPayload = await finalResponse.json();
+            const finalPayload = await readApiJson<FinalRecommendation | { error?: string }>(finalResponse);
 
             if (!finalResponse.ok) {
-              throw new Error(finalPayload.error || "Final AI recommendation failed.");
+              throw new Error(apiError(finalPayload) || "Final AI recommendation failed.");
             }
 
-            nextFinalRecommendation = finalPayload;
+            nextFinalRecommendation = finalPayload as FinalRecommendation;
           } catch {
             aiFailed = true;
             nextFinalRecommendation = buildLocalFinalRecommendation(analysedReport, selectedAiReviews);
@@ -220,16 +220,16 @@ export function useLaisrReview() {
           sectionId
         })
       });
-      const payload = await response.json();
+      const payload = await readApiJson<SectionAiReview | { error?: string }>(response);
 
       if (!response.ok) {
-        throw new Error(payload.error || "AI section review failed.");
+        throw new Error(apiError(payload) || "AI section review failed.");
       }
 
-      setSectionAiReviews((current) => ({
-        ...current,
-        [sectionId]: payload
-      }));
+        setSectionAiReviews((current) => ({
+          ...current,
+          [sectionId]: payload as SectionAiReview
+        }));
     } catch (aiError) {
       setSectionAiReviews((current) => ({
         ...current,
@@ -279,13 +279,13 @@ export function useLaisrReview() {
             selectedAiReviews
           })
         });
-        const payload = await response.json();
+        const payload = await readApiJson<FinalRecommendation | { error?: string }>(response);
 
         if (!response.ok) {
-          throw new Error(payload.error || "Final AI recommendation failed.");
+          throw new Error(apiError(payload) || "Final AI recommendation failed.");
         }
 
-        setFinalRecommendation(payload);
+        setFinalRecommendation(payload as FinalRecommendation);
       } else {
         setFinalRecommendation(buildLocalFinalRecommendation(report, selectedAiReviews));
       }
@@ -324,7 +324,7 @@ export function useLaisrReview() {
       });
 
       if (!response.ok) {
-        const payload = await response.json();
+        const payload = await readApiJson<{ error?: string }>(response);
         throw new Error(payload.error || "PDF generation failed.");
       }
 
@@ -465,13 +465,13 @@ async function runInitialSectionAi(report: LaisrReport, sectionId: InitialAiRevi
         sectionId
       })
     });
-    const payload = await response.json();
+    const payload = await readApiJson<SectionAiReview | { error?: string }>(response);
 
     if (!response.ok) {
-      throw new Error(payload.error || "AI section review failed.");
+      throw new Error(apiError(payload) || "AI section review failed.");
     }
 
-    return payload;
+    return payload as SectionAiReview;
   } catch (error) {
     return {
       sectionId,
@@ -481,4 +481,33 @@ async function runInitialSectionAi(report: LaisrReport, sectionId: InitialAiRevi
       opinion: error instanceof Error ? error.message : "AI section review failed."
     };
   }
+}
+
+async function readApiJson<T>(response: Response): Promise<T> {
+  const text = await response.text();
+
+  if (!text.trim()) {
+    return {} as T;
+  }
+
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    const message = clipApiError(text);
+    throw new Error(
+      response.ok
+        ? `The server returned a non-JSON response: ${message}`
+        : message || `Request failed with status ${response.status}.`
+    );
+  }
+}
+
+function clipApiError(text: string) {
+  return text.replace(/\s+/g, " ").trim().slice(0, 240);
+}
+
+function apiError(payload: unknown) {
+  return payload && typeof payload === "object" && "error" in payload && typeof payload.error === "string"
+    ? payload.error
+    : "";
 }

@@ -122,16 +122,59 @@ export function sectionPayload(report: LaisrReport, sectionId: ReviewSectionId) 
     };
   }
 
+  const aiSection = compactSectionForAi(section);
+
   return {
-    section,
+    section: aiSection,
     metadata: sectionId === "metadata" ? report.metadata : undefined,
-    linguisticProfile: sectionId === "textual" ? report.linguisticProfile : undefined,
+    linguisticProfile: sectionId === "textual" ? compactLinguisticProfile(report) : undefined,
     submittedText:
       sectionId === "ai_prose"
         ? report.extractedTextPreview.slice(0, 9000)
         : undefined,
-    allSections: sectionId === "summary" ? sections : undefined
+    allSections: sectionId === "summary" ? sections.map(compactSectionForAi) : undefined
   };
+}
+
+function compactSectionForAi(section: AlgorithmicSection): AlgorithmicSection {
+  return {
+    ...section,
+    findings: section.findings.slice(0, 24).map((finding) => ({
+      ...finding,
+      evidence: clip(finding.evidence, 500),
+      interpretation: clip(finding.interpretation, 500),
+      counterArgument: clip(finding.counterArgument, 400),
+      vivaAngle: clip(finding.vivaAngle, 300)
+    }))
+  };
+}
+
+function compactLinguisticProfile(report: LaisrReport) {
+  const profile = report.linguisticProfile;
+
+  return {
+    meanFkGrade: profile.meanFkGrade,
+    meanFogIndex: profile.meanFogIndex,
+    meanFormalDensity: profile.meanFormalDensity,
+    meanPassiveDensity: profile.meanPassiveDensity,
+    consistencyScore: profile.consistencyScore,
+    consistencyLabel: profile.consistencyLabel,
+    segments: profile.segments.map((segment) => ({
+      index: segment.index,
+      fkGrade: segment.fkGrade,
+      fogIndex: segment.fogIndex,
+      formalDensity: segment.formalDensity,
+      passiveDensity: segment.passiveDensity,
+      complexityBand: segment.complexityBand,
+      registerBand: segment.registerBand,
+      passiveBand: segment.passiveBand,
+      opening: clip(segment.opening, 180)
+    }))
+  };
+}
+
+function clip(value: string, length: number) {
+  return value.length <= length ? value : `${value.slice(0, length - 3)}...`;
 }
 
 function buildSection({
