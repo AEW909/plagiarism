@@ -7,7 +7,16 @@ import type { FinalRecommendation, LaisrReport, ReviewSectionId, SectionAiReview
 
 export type ReportTab = "document" | "overview" | ReviewSectionId;
 export type AppView = "home" | "single";
-export type WorkflowStepId = "upload" | "document_review" | "evidence" | "ai_reviews" | "summary";
+export type WorkflowStepId = "upload" | "analyse" | "review" | "export";
+export type AnalysisRunState =
+  | "idle"
+  | "upload_ready"
+  | "running_file_checks"
+  | "running_ai_text_review"
+  | "running_final_synthesis"
+  | "complete"
+  | "partial_no_ai"
+  | "failed";
 
 export function useLaisrReview() {
   const [view, setView] = useState<AppView>("home");
@@ -21,7 +30,7 @@ export function useLaisrReview() {
   const [pdfLoading, setPdfLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<ReportTab>("metadata");
   const [includeVivaInPdf, setIncludeVivaInPdf] = useState(true);
-  const [analysisStage, setAnalysisStage] = useState<"idle" | "deterministic" | "ai" | "complete">("idle");
+  const [analysisStage, setAnalysisStage] = useState<AnalysisRunState>("idle");
   const [aiConfig, setAiConfig] = useState<{
     aiConfigured: boolean;
     model: string;
@@ -66,27 +75,27 @@ export function useLaisrReview() {
     (review): review is SectionAiReview => Boolean(review && review.status === "completed")
   );
   const aiReviewInProgress = Object.values(sectionAiLoading).some(Boolean);
-  const workflowStep: WorkflowStepId = !report
-    ? "upload"
-    : finalRecommendation
-      ? "summary"
-      : completedAiReviews.length > 0 || aiReviewInProgress
-        ? "ai_reviews"
-        : activeTab === "document"
-          ? "document_review"
-          : "evidence";
+  const workflowStep: WorkflowStepId = loading
+    ? "analyse"
+    : report && finalRecommendation
+      ? "export"
+      : report
+        ? "review"
+        : "upload";
 
   async function analyseDocument() {
     if (!file) {
       setError("Choose a .docx file first.");
+      setAnalysisStage("idle");
       return;
     }
 
     setLoading(true);
-    setAnalysisStage("deterministic");
+    setAnalysisStage("running_file_checks");
     setError("");
     setReport(null);
     setSectionAiReviews({});
+    setSectionAiLoading({});
     setFinalRecommendation(null);
 
     const formData = new FormData();
@@ -108,12 +117,94 @@ export function useLaisrReview() {
         throw new Error(payload.error || "Analysis failed.");
       }
 
-      setReport(payload);
-      setActiveTab("document");
-      setAnalysisStage("complete");
+      const analysedReport = payload as LaisrReport;
+      let aiFailed = false;
+      const selectedAiReviews: SectionAiReview[] = [];
+      let nextFinalRecommendation: FinalRecommendation | null = null;
+
+      if (aiConfig?.aiConfigured) {
+        setAnalysisStage("running_ai_text_review");
+        setSectionAiLoading({ ai_prose: true });
+
+        try {
+          const aiResponse = await fetch("/api/ai/section", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              report: analysedReport,
+              sectionId: "ai_prose"
+            })
+          });
+          const aiPayload = await aiResponse.json();
+
+          if (!aiResponse.ok) {
+            throw new Error(aiPayload.error || "AI text review failed.");
+          }
+
+          selectedAiReviews.push(aiPayload);
+          setSectionAiReviews({ ai_prose: aiPayload });
+        } catch {
+          aiFailed = true;
+          setSectionAiReviews({
+            ai_prose: {
+              sectionId: "ai_prose",
+              status: "failed",
+              concern: "unavailable",
+              concernScore: 1,
+              opinion: "AI review could not be completed. The file checks are still available."
+            }
+          });
+        } finally {
+          setSectionAiLoading({ ai_prose: false });
+        }
+
+        setAnalysisStage("running_final_synthesis");
+
+        if (!aiFailed) {
+          try {
+            const finalResponse = await fetch("/api/ai/final", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json"
+              },
+              body: JSON.stringify({
+                report: analysedReport,
+                selectedAiReviews
+              })
+            });
+            const finalPayload = await finalResponse.json();
+
+            if (!finalResponse.ok) {
+              throw new Error(finalPayload.error || "Final AI recommendation failed.");
+            }
+
+            nextFinalRecommendation = finalPayload;
+          } catch {
+            aiFailed = true;
+            nextFinalRecommendation = buildLocalFinalRecommendation(analysedReport, selectedAiReviews);
+          }
+        }
+      } else {
+        setAnalysisStage("running_final_synthesis");
+      }
+
+      if (!nextFinalRecommendation) {
+        nextFinalRecommendation = buildLocalFinalRecommendation(analysedReport, selectedAiReviews);
+      }
+
+      setReport(analysedReport);
+      setFinalRecommendation(nextFinalRecommendation);
+      setActiveTab("summary");
+      setAnalysisStage(aiConfig?.aiConfigured && !aiFailed ? "complete" : "partial_no_ai");
+
+      if (aiConfig?.aiConfigured && aiFailed) {
+        setError("AI review could not be completed. The file checks are still available.");
+      }
     } catch (analysisError) {
       setError(analysisError instanceof Error ? analysisError.message : "Analysis failed.");
-      setAnalysisStage("idle");
+      setAnalysisStage("failed");
     } finally {
       setLoading(false);
     }
@@ -299,6 +390,12 @@ export function useLaisrReview() {
     setView("home");
   }
 
+  function updateFile(nextFile: File | null) {
+    setFile(nextFile);
+    setAnalysisStage(nextFile ? "upload_ready" : "idle");
+    setError("");
+  }
+
   return {
     activeSection,
     activeTab,
@@ -326,7 +423,7 @@ export function useLaisrReview() {
     setActiveTab,
     setAuthenticatedFile,
     setCandidateId,
-    setFile,
+    setFile: updateFile,
     setIncludeVivaInPdf,
     setSubject,
     setSummaryModalOpen,

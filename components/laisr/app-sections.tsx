@@ -36,28 +36,44 @@ import {
 } from "./ui-primitives";
 export function HomeOptions({ onSingleUpload }: { onSingleUpload: () => void }) {
   return (
-    <section className="home-grid">
-      <button className="home-option active" type="button" onClick={onSingleUpload}>
-        <FileSearch size={24} />
-        <span>
-          <strong>Single file review</strong>
-          <small>Upload one DOCX submission, add an optional authenticated sample, and generate a tabbed evidence report.</small>
-        </span>
-      </button>
-      <button className="home-option disabled" type="button" disabled>
-        <Files size={24} />
-        <span>
-          <strong>Class set review</strong>
-          <small>Batch upload and compare a cohort systematically. Planned for a later build.</small>
-        </span>
-      </button>
-      <button className="home-option disabled" type="button" disabled>
-        <Clock size={24} />
-        <span>
-          <strong>Historical reports</strong>
-          <small>Saved submissions and report history when Supabase storage is added.</small>
-        </span>
-      </button>
+    <section className="teacher-home">
+      <div className="teacher-hero">
+        <div>
+          <p className="eyebrow">Academic integrity triage</p>
+          <h1>Decide who needs a viva, with evidence you can explain.</h1>
+          <p>
+            LAISR checks a submitted Word document, summarises the strongest concerns in plain language, and prepares
+            follow-up questions that help a candidate demonstrate authorship.
+          </p>
+          <button className="primary-button large-action" type="button" onClick={onSingleUpload}>
+            <FileSearch size={19} />
+            Analyse a submission
+          </button>
+        </div>
+        <div className="teacher-hero-panel" aria-label="Review flow">
+          <span>1. Upload</span>
+          <span>2. Analyse</span>
+          <span>3. Review concerns</span>
+          <span>4. Prepare viva</span>
+        </div>
+      </div>
+
+      <div className="future-actions" aria-label="Future tools">
+        <div>
+          <Files size={20} />
+          <span>
+            <strong>Class set review</strong>
+            <small>Batch review is planned later.</small>
+          </span>
+        </div>
+        <div>
+          <Clock size={20} />
+          <span>
+            <strong>Saved reports</strong>
+            <small>Report history will come with storage.</small>
+          </span>
+        </div>
+      </div>
     </section>
   );
 }
@@ -79,7 +95,15 @@ export function SingleUploadScreen({
   onSubjectChange
 }: {
   aiLoading: boolean;
-  analysisStage: "idle" | "deterministic" | "ai" | "complete";
+  analysisStage:
+    | "idle"
+    | "upload_ready"
+    | "running_file_checks"
+    | "running_ai_text_review"
+    | "running_final_synthesis"
+    | "complete"
+    | "partial_no_ai"
+    | "failed";
   authenticatedFile: File | null;
   candidateId: string;
   error: string;
@@ -100,8 +124,8 @@ export function SingleUploadScreen({
           <ArrowLeft size={18} />
         </button>
         <div>
-          <h1>Single file review</h1>
-          <p>Upload a DOCX submission and collect review signals before deciding whether a viva is warranted.</p>
+          <h1>Analyse a submission</h1>
+          <p>Choose the submitted Word file. Add known student writing if you want LAISR to compare style.</p>
         </div>
       </div>
 
@@ -110,7 +134,7 @@ export function SingleUploadScreen({
           <label className="upload-zone">
             <Upload size={30} />
             <strong>{file ? file.name : "Choose DOCX submission"}</strong>
-            <span>Document text and XML are analysed in this session.</span>
+            <span>LAISR checks file history, writing patterns, document text, and source-use signals.</span>
             <input
               type="file"
               accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -119,8 +143,8 @@ export function SingleUploadScreen({
           </label>
           <label className="upload-zone compact">
             <FileText size={24} />
-            <strong>{authenticatedFile ? authenticatedFile.name : "Optional authenticated sample"}</strong>
-            <span>Known student writing enables a style comparison.</span>
+            <strong>{authenticatedFile ? authenticatedFile.name : "Optional known writing sample"}</strong>
+            <span>Use this if you have earlier work you trust came from the same student.</span>
             <input
               type="file"
               accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -148,7 +172,7 @@ export function SingleUploadScreen({
           </label>
           <button className="primary-button" type="button" disabled={loading} onClick={onAnalyse}>
             {loading ? <Loader2 className="spin" size={18} /> : <FileSearch size={18} />}
-            {loading ? "Checking evidence" : "Analyse document"}
+            {loading ? "Analysing" : "Start review"}
           </button>
           {aiLoading ? (
             <div className="analysis-progress">
@@ -162,6 +186,491 @@ export function SingleUploadScreen({
       </div>
     </section>
   );
+}
+
+type TeacherAnalysisState =
+  | "idle"
+  | "upload_ready"
+  | "running_file_checks"
+  | "running_ai_text_review"
+  | "running_final_synthesis"
+  | "complete"
+  | "partial_no_ai"
+  | "failed";
+
+export function AnalysisProgressScreen({
+  aiConfigured,
+  error,
+  fileName,
+  stage
+}: {
+  aiConfigured: boolean;
+  error: string;
+  fileName?: string;
+  stage: TeacherAnalysisState;
+}) {
+  const steps = [
+    {
+      id: "file",
+      label: "Checking the Word file",
+      description: "Reading the document, file history, formatting traces, and visible text.",
+      active: stage === "running_file_checks",
+      complete: stage === "running_ai_text_review" || stage === "running_final_synthesis" || stage === "complete" || stage === "partial_no_ai"
+    },
+    {
+      id: "ai",
+      label: aiConfigured ? "Asking AI for a text-only opinion" : "AI review unavailable",
+      description: aiConfigured
+        ? "The model sees the essay text only, not the file-history checks."
+        : "No OpenAI key is configured, so LAISR will use file checks only.",
+      active: stage === "running_ai_text_review",
+      complete: stage === "running_final_synthesis" || stage === "complete",
+      skipped: !aiConfigured || stage === "partial_no_ai"
+    },
+    {
+      id: "summary",
+      label: "Preparing the viva recommendation",
+      description: "Weighing the completed evidence streams into a teacher-facing triage outcome.",
+      active: stage === "running_final_synthesis",
+      complete: stage === "complete" || stage === "partial_no_ai"
+    }
+  ];
+
+  return (
+    <section className="analysis-stage-screen" aria-live="polite">
+      <div className="analysis-stage-card">
+        <div className="stage-loader">
+          {stage === "failed" ? <AlertTriangle size={28} /> : <Loader2 className="spin" size={28} />}
+        </div>
+        <p className="eyebrow">Analyse</p>
+        <h1>{stage === "failed" ? "Review could not be completed" : "LAISR is reviewing the submission"}</h1>
+        <p>
+          {fileName ? <strong>{fileName}</strong> : "Your document"} is being checked. The final recommendation will
+          appear only after the selected evidence steps have finished.
+        </p>
+        <div className="teacher-progress-list">
+          {steps.map((step) => (
+            <div
+              className={
+                step.active
+                  ? "teacher-progress-step active"
+                  : step.complete
+                    ? "teacher-progress-step complete"
+                    : step.skipped
+                      ? "teacher-progress-step skipped"
+                      : "teacher-progress-step"
+              }
+              key={step.id}
+            >
+              <span>
+                {step.active ? <Loader2 className="spin" size={15} /> : step.complete ? <CheckCircle2 size={15} /> : step.skipped ? "-" : ""}
+              </span>
+              <div>
+                <strong>{step.label}</strong>
+                <small>{step.description}</small>
+              </div>
+            </div>
+          ))}
+        </div>
+        {error ? <p className="error-text">{error}</p> : null}
+      </div>
+    </section>
+  );
+}
+
+export function TeacherReviewDashboard({
+  aiConfigured,
+  aiReview,
+  analysisStage,
+  finalRecommendation,
+  includeVivaInPdf,
+  onDownloadJson,
+  onDownloadPdf,
+  onReset,
+  onToggleViva,
+  pdfLoading,
+  report
+}: {
+  aiConfigured: boolean;
+  aiReview?: SectionAiReview;
+  analysisStage: TeacherAnalysisState;
+  finalRecommendation: FinalRecommendation | null;
+  includeVivaInPdf: boolean;
+  onDownloadJson: () => void;
+  onDownloadPdf: () => void;
+  onReset: () => void;
+  onToggleViva: (value: boolean) => void;
+  pdfLoading: boolean;
+  report: LaisrReport;
+}) {
+  const groups = buildTeacherConcernGroups(report, aiReview, aiConfigured);
+  const vivaRecommended =
+    finalRecommendation?.recommendation === "Viva recommended" ||
+    finalRecommendation?.recommendation === "Strong viva recommended";
+
+  return (
+    <section className="teacher-review">
+      <ReviewStatusHeader
+        aiConfigured={aiConfigured}
+        analysisStage={analysisStage}
+        finalRecommendation={finalRecommendation}
+        report={report}
+      />
+
+      <section className={`teacher-outcome ${finalRecommendation ? recommendationTone(finalRecommendation.recommendation) : "pending"}`}>
+        <div>
+          <p className="eyebrow">Recommendation</p>
+          <h1>{finalRecommendation ? directRecommendationLabel(finalRecommendation.recommendation) : "Recommendation pending"}</h1>
+          <p>
+            {finalRecommendation
+              ? finalRecommendation.rationale
+              : "LAISR has not produced a final viva recommendation yet."}
+          </p>
+        </div>
+        <div className="outcome-score">
+          <span>{finalRecommendation?.concernScore ?? "-"}</span>
+          <small>concern / 10</small>
+        </div>
+      </section>
+
+      <div className="teacher-summary-strip">
+        <SummaryItem label="File" value={report.summary.fileName} />
+        <SummaryItem label="Candidate" value={report.summary.candidateId} />
+        <SummaryItem label="Words" value={String(report.summary.wordCount)} />
+        <SummaryItem label="Known writing" value={report.comparativeProfile.available ? "Supplied" : "Not supplied"} />
+      </div>
+
+      <section className="teacher-section">
+        <div className="teacher-section-heading">
+          <div>
+            <p className="eyebrow">Review concerns</p>
+            <h2>What LAISR found</h2>
+          </div>
+          <button className="outline-button compact-action" type="button" onClick={onReset}>
+            New review
+          </button>
+        </div>
+        <div className="concern-grid">
+          {groups.map((group) => (
+            <ConcernGroupCard group={group} key={group.id} />
+          ))}
+        </div>
+      </section>
+
+      <details className="teacher-document-drawer">
+        <summary>
+          <span>
+            <strong>Open document view</strong>
+            <small>Read the extracted essay text with linked concern markers.</small>
+          </span>
+        </summary>
+        <DocumentAnnotationView report={report} />
+      </details>
+
+      <section className="teacher-section export-section">
+        <div>
+          <p className="eyebrow">Prepare viva / export report</p>
+          <h2>{vivaRecommended ? "Suggested viva questions" : "Report export"}</h2>
+          <p>
+            {vivaRecommended
+              ? "Use these questions to test authorship, understanding, process, and source handling."
+              : "A viva is not currently indicated, but you can still export the review record."}
+          </p>
+        </div>
+
+        {vivaRecommended ? (
+          <div className="teacher-question-list">
+            {report.vivaQuestions.slice(0, 8).map((question, index) => (
+              <article className="teacher-question" key={`${question.question}-${index}`}>
+                <strong>{index + 1}. {question.question}</strong>
+                <p>{question.rationale}</p>
+              </article>
+            ))}
+          </div>
+        ) : null}
+
+        <div className="teacher-export-actions">
+          {vivaRecommended ? (
+            <label className="toggle-row">
+              <input
+                checked={includeVivaInPdf}
+                type="checkbox"
+                onChange={(event) => onToggleViva(event.target.checked)}
+              />
+              Include viva questions in PDF
+            </label>
+          ) : null}
+          <button className="primary-button" type="button" disabled={pdfLoading || !finalRecommendation} onClick={onDownloadPdf}>
+            {pdfLoading ? <Loader2 className="spin" size={18} /> : <Download size={18} />}
+            Download PDF report
+          </button>
+          <button className="outline-button" type="button" onClick={onDownloadJson}>
+            Export JSON
+          </button>
+        </div>
+      </section>
+    </section>
+  );
+}
+
+type TeacherConcernGroup = {
+  id: string;
+  title: string;
+  description: string;
+  status: "clear" | "check" | "concern" | "high";
+  statusLabel: "Clear" | "Check" | "Concern" | "High concern";
+  findings: LaisrReport["findings"];
+  technicalChecks: string[];
+  aiReview?: SectionAiReview;
+  emptyText: string;
+};
+
+function ReviewStatusHeader({
+  aiConfigured,
+  analysisStage,
+  finalRecommendation,
+  report
+}: {
+  aiConfigured: boolean;
+  analysisStage: TeacherAnalysisState;
+  finalRecommendation: FinalRecommendation | null;
+  report: LaisrReport;
+}) {
+  const items = [
+    { label: "Upload", detail: report.summary.fileName, status: "complete" },
+    { label: "File checks", detail: `${report.findings.length} finding${report.findings.length === 1 ? "" : "s"}`, status: "complete" },
+    {
+      label: "AI review",
+      detail: aiConfigured ? (analysisStage === "complete" ? "Completed" : "Unavailable") : "Unavailable",
+      status: aiConfigured && analysisStage === "complete" ? "complete" : "skipped"
+    },
+    {
+      label: "Recommendation",
+      detail: finalRecommendation ? directRecommendationLabel(finalRecommendation.recommendation) : "Pending",
+      status: finalRecommendation ? "complete" : "current"
+    }
+  ];
+
+  return (
+    <section className="review-status-header" aria-label="Review status">
+      {items.map((item) => (
+        <div className={`review-status-item ${item.status}`} key={item.label}>
+          <span>{item.status === "complete" ? <CheckCircle2 size={15} /> : item.status === "skipped" ? "-" : ""}</span>
+          <div>
+            <strong>{item.label}</strong>
+            <small>{item.detail}</small>
+          </div>
+        </div>
+      ))}
+    </section>
+  );
+}
+
+function ConcernGroupCard({ group }: { group: TeacherConcernGroup }) {
+  return (
+    <article className={`concern-card status-${group.status}`}>
+      <div className="concern-card-head">
+        <div>
+          <h3>{group.title}</h3>
+          <p>{group.description}</p>
+        </div>
+        <mark>{group.statusLabel}</mark>
+      </div>
+
+      {group.aiReview ? (
+        <div className={`teacher-ai-opinion concern-${group.aiReview.concern}`}>
+          <strong>AI concern: {aiConcernLabel(group.aiReview.concern)} - {group.aiReview.concernScore}/10</strong>
+          <p>{group.aiReview.opinion}</p>
+        </div>
+      ) : null}
+
+      {group.findings.length > 0 ? (
+        <div className="teacher-finding-list">
+          {group.findings.map((finding) => (
+            <TeacherFindingCard finding={finding} key={finding.id} />
+          ))}
+        </div>
+      ) : (
+        <p className="muted">{group.emptyText}</p>
+      )}
+
+      <details className="technical-evidence">
+        <summary>What was checked?</summary>
+        <ul>
+          {group.technicalChecks.map((check) => (
+            <li key={check}>{check}</li>
+          ))}
+        </ul>
+      </details>
+    </article>
+  );
+}
+
+function TeacherFindingCard({ finding }: { finding: LaisrReport["findings"][number] }) {
+  const range = getFindingParagraphRange(finding, 9999);
+
+  return (
+    <article className={`teacher-finding ${finding.severity}`}>
+      <div className="teacher-finding-title">
+        <span>{severityLabel(finding.severity)}</span>
+        <strong>{finding.title}</strong>
+      </div>
+      <dl>
+        <div>
+          <dt>What we found</dt>
+          <dd>{plainFindingObservation(finding)}</dd>
+        </div>
+        <div>
+          <dt>Why it may matter</dt>
+          <dd>{finding.interpretation}</dd>
+        </div>
+        <div>
+          <dt>What else could explain it</dt>
+          <dd>{finding.counterArgument}</dd>
+        </div>
+        <div>
+          <dt>What to ask in viva</dt>
+          <dd>{finding.vivaAngle}</dd>
+        </div>
+      </dl>
+      {range ? <a href={`#paragraph-${range.start}`}>View in document</a> : null}
+    </article>
+  );
+}
+
+function buildTeacherConcernGroups(
+  report: LaisrReport,
+  aiReview: SectionAiReview | undefined,
+  aiConfigured: boolean
+): TeacherConcernGroup[] {
+  const fileFindings = report.findings.filter((finding) =>
+    ["Document Metadata", "Package Forensics", "XML Forensics", "Relationships and Embedded Objects"].includes(finding.category)
+  );
+  const writingFindings = report.findings.filter((finding) =>
+    ["Textual Anomalies", "Stylometric Indicators", "Linguistic Consistency"].includes(finding.category)
+  );
+  const comparisonFindings = report.findings.filter((finding) => finding.category === "Authenticated Writing Comparison");
+
+  return [
+    {
+      id: "file",
+      title: "How the file was made",
+      description: "Checks whether the Word file shows unusual editing, pasting, formatting, hidden text, or embedded-content clues.",
+      status: concernStatus(fileFindings),
+      statusLabel: concernStatusLabel(fileFindings),
+      findings: fileFindings,
+      technicalChecks: ["Document properties", "file package timestamps", "edit-session markers", "hidden text", "browser paste traces", "embedded objects"],
+      emptyText: "No notable file-history concerns were found."
+    },
+    {
+      id: "writing",
+      title: "How the writing behaves",
+      description: "Checks whether sections of the essay look unusually repetitive, inconsistent, heavily smoothed, or visibly patched together.",
+      status: concernStatus(writingFindings),
+      statusLabel: concernStatusLabel(writingFindings),
+      findings: writingFindings,
+      technicalChecks: ["odd substitutions", "merged words", "repeated paragraphs", "sentence patterns", "complexity shifts", "formal wording spikes"],
+      emptyText: "No notable writing-pattern concerns were found."
+    },
+    {
+      id: "comparison",
+      title: "How it compares with known work",
+      description: report.comparativeProfile.available
+        ? "Compares this submission with the known student writing sample you supplied."
+        : "No known writing sample was supplied, so this comparison was not run.",
+      status: report.comparativeProfile.available ? concernStatus(comparisonFindings) : "clear",
+      statusLabel: report.comparativeProfile.available ? concernStatusLabel(comparisonFindings) : "Clear",
+      findings: comparisonFindings,
+      technicalChecks: ["sentence length", "word length", "type-token ratio", "formal wording", "passive voice", "transition density"],
+      emptyText: report.comparativeProfile.available
+        ? "The submitted writing was broadly consistent with the known sample."
+        : "Known writing comparison was not supplied."
+    },
+    {
+      id: "ai",
+      title: "What AI thinks from the text alone",
+      description: aiConfigured
+        ? "AI reviewed only the essay text for source-use, authorship, paraphrasing, and AI-writing indicators."
+        : "AI review was unavailable because no OpenAI key is configured.",
+      status: aiReview?.status === "completed"
+        ? aiReview.concern === "high"
+          ? "high"
+          : aiReview.concern === "moderate"
+            ? "concern"
+            : aiReview.concern === "low"
+              ? "check"
+              : "clear"
+        : "clear",
+      statusLabel: aiReview?.status === "completed"
+        ? aiReview.concern === "high"
+          ? "High concern"
+          : aiReview.concern === "moderate"
+            ? "Concern"
+            : aiReview.concern === "low"
+              ? "Check"
+              : "Clear"
+        : "Clear",
+      findings: [],
+      aiReview,
+      technicalChecks: ["visible essay text only", "source-use indicators", "close paraphrase indicators", "AI-assisted writing indicators", "authorship consistency"],
+      emptyText: aiConfigured
+        ? "AI did not return a completed text-only concern."
+        : "AI review was not run."
+    }
+  ];
+}
+
+function concernStatus(findings: LaisrReport["findings"]): TeacherConcernGroup["status"] {
+  if (findings.some((finding) => finding.severity === "critical")) {
+    return "high";
+  }
+
+  if (findings.some((finding) => finding.severity === "serious") || findings.filter((finding) => finding.severity === "notable").length >= 3) {
+    return "concern";
+  }
+
+  if (findings.some((finding) => finding.severity === "notable" || finding.severity === "info")) {
+    return "check";
+  }
+
+  return "clear";
+}
+
+function concernStatusLabel(findings: LaisrReport["findings"]): TeacherConcernGroup["statusLabel"] {
+  const status = concernStatus(findings);
+  return status === "high" ? "High concern" : status === "concern" ? "Concern" : status === "check" ? "Check" : "Clear";
+}
+
+function directRecommendationLabel(recommendation: FinalRecommendation["recommendation"]) {
+  if (recommendation === "No significant indicators detected") {
+    return "No viva indicated";
+  }
+
+  if (recommendation === "Examiner review recommended") {
+    return "Teacher review suggested";
+  }
+
+  if (recommendation === "Strong viva recommended") {
+    return "Strong viva recommendation";
+  }
+
+  return "Viva recommended";
+}
+
+function recommendationTone(recommendation: FinalRecommendation["recommendation"]) {
+  if (recommendation === "Strong viva recommended") {
+    return "high";
+  }
+
+  if (recommendation === "Viva recommended") {
+    return "concern";
+  }
+
+  if (recommendation === "Examiner review recommended") {
+    return "check";
+  }
+
+  return "clear";
 }
 
 export function SectionReviewTab({
@@ -471,25 +980,24 @@ export function ProgressRail({
   stage
 }: {
   hasAuthenticatedSample: boolean;
-  stage: "idle" | "deterministic" | "ai" | "complete";
+  stage: TeacherAnalysisState;
 }) {
   const steps = [
     "Load DOCX",
-    "Metadata",
-    "XML",
-    "Text",
-    "Style",
-    "Linguistic",
+    "File history",
+    "Writing patterns",
     ...(hasAuthenticatedSample ? ["Compare sample"] : []),
-    "Evidence synthesis",
-    "Judgement"
+    "AI text opinion",
+    "Viva recommendation"
   ];
   const activeIndex =
-    stage === "deterministic"
-      ? hasAuthenticatedSample ? 6 : 5
-      : stage === "ai"
+    stage === "running_file_checks"
+      ? hasAuthenticatedSample ? 3 : 2
+      : stage === "running_ai_text_review"
         ? steps.length - 2
-        : stage === "complete"
+        : stage === "running_final_synthesis"
+          ? steps.length - 1
+          : stage === "complete" || stage === "partial_no_ai"
           ? steps.length - 1
           : 0;
 
@@ -498,7 +1006,7 @@ export function ProgressRail({
       {steps.map((step, index) => (
         <div
           className={
-            index < activeIndex || stage === "complete"
+            index < activeIndex || stage === "complete" || stage === "partial_no_ai"
               ? "progress-step done"
               : index === activeIndex
                 ? "progress-step active"
@@ -506,7 +1014,7 @@ export function ProgressRail({
           }
           key={step}
         >
-          <span>{index < activeIndex || stage === "complete" ? <CheckCircle2 size={13} /> : index + 1}</span>
+          <span>{index < activeIndex || stage === "complete" || stage === "partial_no_ai" ? <CheckCircle2 size={13} /> : index + 1}</span>
           <small>{step}</small>
         </div>
       ))}
