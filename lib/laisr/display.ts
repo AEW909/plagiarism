@@ -41,19 +41,19 @@ export function aiConcernLabel(concern: SectionAiReview["concern"]) {
 
 export function sectionLabel(sectionId: ReviewSectionId) {
   if (sectionId === "metadata") {
-    return "Metadata and file forensics";
+    return "File history checks";
   }
 
   if (sectionId === "textual") {
-    return "Textual anomalies, tone and style";
+    return "Writing pattern checks";
   }
 
   if (sectionId === "comparative") {
-    return "Authenticated writing comparison";
+    return "Known writing comparison";
   }
 
   if (sectionId === "ai_prose") {
-    return "AI prose opinion";
+    return "AI text opinion";
   }
 
   return "Summary";

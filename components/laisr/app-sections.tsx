@@ -39,23 +39,25 @@ export function HomeOptions({ onSingleUpload }: { onSingleUpload: () => void }) 
   return (
     <section className="teacher-home">
       <div className="teacher-hero">
-        <div>
-          <p className="eyebrow">Academic integrity triage</p>
-          <h1>Decide who needs a viva, with evidence you can explain.</h1>
+        <div className="teacher-hero-copy">
+          <h1>Review a submission for viva readiness.</h1>
           <p>
-            LAISR checks a submitted Word document, summarises the strongest concerns in plain language, and prepares
-            follow-up questions that help a candidate demonstrate authorship.
+            LAISR turns a Word document into a clear teacher review: what looks ordinary, what needs a closer look,
+            and what to ask if a viva is the fairest next step.
           </p>
-          <button className="primary-button large-action" type="button" onClick={onSingleUpload}>
-            <FileSearch size={19} />
-            Analyse a submission
-          </button>
+          <div className="hero-actions">
+            <button className="primary-button large-action" type="button" onClick={onSingleUpload}>
+              <FileSearch size={19} />
+              Analyse a submission
+            </button>
+            <span>Single DOCX review. No verdict appears until the selected checks finish.</span>
+          </div>
         </div>
         <div className="teacher-hero-panel" aria-label="Review flow">
-          <span>1. Upload</span>
-          <span>2. Analyse</span>
-          <span>3. Review concerns</span>
-          <span>4. Prepare viva</span>
+          <span><strong>1</strong><small>Upload the submission</small></span>
+          <span><strong>2</strong><small>Choose optional AI opinions</small></span>
+          <span><strong>3</strong><small>Review concerns in context</small></span>
+          <span><strong>4</strong><small>Prepare viva questions or export</small></span>
         </div>
       </div>
 
@@ -132,22 +134,34 @@ export function SingleUploadScreen({
         </button>
         <div>
           <h1>Analyse a submission</h1>
-          <p>Choose the submitted Word file. Add known student writing if you want LAISR to compare style.</p>
+          <p>Set up the review in three steps. Required file first, optional context second, AI support last.</p>
         </div>
+        <button className="primary-button compact-action setup-start-button" type="button" disabled={loading || !file} onClick={onAnalyse}>
+          {loading ? <Loader2 className="spin" size={16} /> : <FileSearch size={16} />}
+          Start review
+        </button>
       </div>
 
       <div className="upload-workspace">
         <div className="upload-stack">
+          <div className="setup-step-label">
+            <span>1</span>
+            <strong>Submission</strong>
+          </div>
           <label className="upload-zone">
             <Upload size={30} />
             <strong>{file ? file.name : "Choose DOCX submission"}</strong>
-            <span>LAISR checks file history, writing patterns, document text, and source-use signals.</span>
+            <span>The main essay or assignment to review. DOCX files only.</span>
             <input
               type="file"
               accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
               onChange={(event) => onFileChange(event.target.files?.[0] ?? null)}
             />
           </label>
+          <div className="setup-step-label">
+            <span>2</span>
+            <strong>Optional comparison</strong>
+          </div>
           <label className="upload-zone compact">
             <FileText size={24} />
             <strong>{authenticatedFile ? authenticatedFile.name : "Optional known writing sample"}</strong>
@@ -161,6 +175,10 @@ export function SingleUploadScreen({
         </div>
 
         <div className="details-panel">
+          <div className="setup-step-label flush">
+            <span>3</span>
+            <strong>Review details</strong>
+          </div>
           <label>
             Candidate ID
             <input
@@ -180,10 +198,10 @@ export function SingleUploadScreen({
 
           <div className="ai-plan-panel" aria-label="AI review options">
             <div>
-              <strong>AI review options</strong>
+              <strong>Optional AI support</strong>
               <span>
                 {aiConfigured
-                  ? "Choose which AI opinions to add after the file checks."
+                  ? "Choose which AI opinions to run. These support the viva decision; they do not replace teacher judgement."
                   : "AI options are unavailable until an OpenAI key is configured."}
               </span>
             </div>
@@ -224,9 +242,9 @@ export function SingleUploadScreen({
             />
           </div>
 
-          <button className="primary-button" type="button" disabled={loading} onClick={onAnalyse}>
+          <button className="primary-button" type="button" disabled={loading || !file} onClick={onAnalyse}>
             {loading ? <Loader2 className="spin" size={18} /> : <FileSearch size={18} />}
-            {loading ? "Analysing" : "Start review"}
+            {loading ? "Analysing" : file ? "Start review" : "Choose a DOCX to start"}
           </button>
           {aiLoading ? (
             <div className="analysis-progress">
@@ -414,7 +432,7 @@ export function TeacherReviewDashboard({
 
       <section className={`teacher-outcome ${finalRecommendation ? recommendationTone(finalRecommendation.recommendation) : "pending"}`}>
         <div>
-          <p className="eyebrow">Recommendation</p>
+          <p className="eyebrow">Final triage</p>
           <h1>{finalRecommendation ? directRecommendationLabel(finalRecommendation.recommendation) : "Recommendation pending"}</h1>
           {finalRecommendation ? (
             <TeacherRationale text={finalRecommendation.rationale} />
@@ -428,14 +446,28 @@ export function TeacherReviewDashboard({
         </div>
       </section>
 
+      {finalRecommendation ? <OutcomeScale activeRecommendation={finalRecommendation.recommendation} /> : null}
+
       <ReviewPatternMap report={report} />
+
+      <section className="review-workbench-intro">
+        <div>
+          <p className="eyebrow">Review workbench</p>
+          <h2>Evidence on the left. Document context on the right.</h2>
+        </div>
+        <p>
+          Open one review area, then use paragraph links to check the relevant passage. File-wide clues jump to the
+          file history snapshot above the document.
+        </p>
+      </section>
 
       <section className="review-split">
         <aside className="review-left-rail" aria-label="Evidence navigation">
           <div className="review-left-heading">
             <div>
-              <p className="eyebrow">Review concerns</p>
-              <h2>What LAISR found</h2>
+              <p className="eyebrow">Evidence menu</p>
+              <h2>Four review areas</h2>
+              <span>Open one area at a time. Click any location link to jump to the document.</span>
             </div>
             <button className="outline-button compact-action" type="button" onClick={onReset}>
               New review
@@ -537,8 +569,8 @@ type TeacherConcernGroup = {
   id: string;
   title: string;
   description: string;
-  status: "clear" | "check" | "concern" | "high";
-  statusLabel: "Clear" | "Check" | "Concern" | "High concern";
+  status: "not_run" | "clear" | "check" | "concern" | "high";
+  statusLabel: "Not supplied" | "Not run" | "Clear" | "Check" | "Concern" | "High concern";
   findings: LaisrReport["findings"];
   technicalChecks: string[];
   aiReview?: SectionAiReview;
@@ -619,6 +651,7 @@ function ReviewStatusHeader({
 function ConcernGroupCard({ group, index }: { group: TeacherConcernGroup; index: number }) {
   const findingGroups = groupFindingsForNavigation(group.findings);
   const previewFindings = [...group.findings].sort((a, b) => severityRank(b.severity) - severityRank(a.severity)).slice(0, 3);
+  const metrics = concernGroupMetrics(group);
 
   return (
     <details className={`concern-card status-${group.status}`}>
@@ -627,6 +660,14 @@ function ConcernGroupCard({ group, index }: { group: TeacherConcernGroup; index:
         <div>
           <h3>{group.title}</h3>
           <p>{group.description}</p>
+          <div className="concern-card-metrics" aria-label={`${group.title} summary`}>
+            {metrics.map((metric) => (
+              <span key={metric.label}>
+                <strong>{metric.value}</strong>
+                {metric.label}
+              </span>
+            ))}
+          </div>
         </div>
         <mark>{group.statusLabel}</mark>
       </summary>
@@ -690,6 +731,31 @@ function ConcernGroupCard({ group, index }: { group: TeacherConcernGroup; index:
   );
 }
 
+function concernGroupMetrics(group: TeacherConcernGroup) {
+  if (group.status === "not_run") {
+    return [{ label: "status", value: group.statusLabel }];
+  }
+
+  const serious = group.findings.filter((finding) => finding.severity === "critical" || finding.severity === "serious").length;
+  const notable = group.findings.filter((finding) => finding.severity === "notable").length;
+  const other = group.findings.filter((finding) => finding.severity === "info").length;
+  const metrics = [
+    { label: "serious", value: String(serious) },
+    { label: "notable", value: String(notable) },
+    { label: "other", value: String(other) }
+  ];
+
+  if (group.aiReview?.status === "completed") {
+    metrics.push({ label: "AI score", value: `${group.aiReview.concernScore}/10` });
+  }
+
+  if (!group.findings.length && !group.aiReview) {
+    return [{ label: "findings", value: "0" }];
+  }
+
+  return metrics;
+}
+
 function TeacherFindingCard({ finding }: { finding: LaisrReport["findings"][number] }) {
   const range = getFindingParagraphRange(finding, 9999);
 
@@ -743,7 +809,7 @@ function buildTeacherConcernGroups(
   const writingStatus = combinedConcernStatus(writingFindings, sectionAiReviews.textual);
   const comparisonStatus = report.comparativeProfile.available
     ? combinedConcernStatus(comparisonFindings, sectionAiReviews.comparative)
-    : "clear";
+    : "not_run";
   const proseStatus = statusFromAiReview(sectionAiReviews.ai_prose);
 
   return [
@@ -776,7 +842,7 @@ function buildTeacherConcernGroups(
         ? "Compares this submission with the known student writing sample you supplied."
         : "No known writing sample was supplied, so this comparison was not run.",
       status: comparisonStatus,
-      statusLabel: concernStatusText(comparisonStatus),
+      statusLabel: report.comparativeProfile.available ? concernStatusText(comparisonStatus) : "Not supplied",
       findings: comparisonFindings,
       aiReview: sectionAiReviews.comparative,
       technicalChecks: ["sentence length", "word length", "type-token ratio", "formal wording", "passive voice", "transition density"],
@@ -919,7 +985,7 @@ function combinedConcernStatus(
 
 function statusFromAiReview(aiReview?: SectionAiReview): TeacherConcernGroup["status"] {
   if (aiReview?.status !== "completed") {
-    return "clear";
+    return "not_run";
   }
 
   if (aiReview.concern === "high") {
@@ -938,11 +1004,20 @@ function statusFromAiReview(aiReview?: SectionAiReview): TeacherConcernGroup["st
 }
 
 function concernStatusText(status: TeacherConcernGroup["status"]): TeacherConcernGroup["statusLabel"] {
-  return status === "high" ? "High concern" : status === "concern" ? "Concern" : status === "check" ? "Check" : "Clear";
+  return status === "high"
+    ? "High concern"
+    : status === "concern"
+      ? "Concern"
+      : status === "check"
+        ? "Check"
+        : status === "not_run"
+          ? "Not run"
+          : "Clear";
 }
 
 function statusRank(status: TeacherConcernGroup["status"]) {
   return {
+    not_run: -1,
     clear: 0,
     check: 1,
     concern: 2,

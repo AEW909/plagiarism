@@ -209,18 +209,20 @@ const KNOWN_MERGED_COMPOUNDS = [
   "communitybased",
   "riskbased",
   "timeconsuming",
-  "lifelong",
-  "worldwide",
-  "healthcare",
-  "wellbeing",
   "wellestablished",
   "wideranging",
   "farreaching",
-  "hardwired",
   "deeprooted",
-  "longstanding",
   "widescale"
 ];
+
+const ACCEPTED_CLOSED_COMPOUNDS = new Set([
+  "healthcare",
+  "lifelong",
+  "longstanding",
+  "wellbeing",
+  "worldwide"
+]);
 
 const COMMON_WORDS = new Set([
   "based",
@@ -681,6 +683,10 @@ function analyseTextual(doc: ExtractedDocx): Finding[] {
   }
 
   for (const token of new Set(tokens.filter((token) => token.length >= 9))) {
+    if (ACCEPTED_CLOSED_COMPOUNDS.has(token)) {
+      continue;
+    }
+
     const split = findCompoundSplit(token);
     if (split) {
       findings.push(makeFinding(`text-compound-${token}`, "Textual Anomalies", "notable", `Possible merged words: ${token}`, `The token "${token}" appears to combine "${split[0]}" and "${split[1]}".`, "Text body", "Merged words can be a sign of PDF extraction, copy-paste artefacts, or automated rewriting.", "This can also arise from ordinary typing errors.", "Ask the candidate to explain the source and editing of the sentence containing this term."));

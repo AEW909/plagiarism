@@ -38,23 +38,23 @@ export function buildAlgorithmicSections(report: LaisrReport): AlgorithmicSectio
   return [
     buildSection({
       id: "metadata",
-      label: "Metadata and File Forensics",
+      label: "File history checks",
       description:
-        "Document properties, version/process clues, edit-session markers, formatting artefacts, relationships, embedded objects, and XML-level provenance checks.",
+        "How the Word file appears to have been made, edited, saved, formatted, and assembled.",
       findings: metadataFindings
     }),
     buildSection({
       id: "textual",
-      label: "Textual Anomalies, Tone and Style",
+      label: "Writing pattern checks",
       description:
-        "Visible textual anomalies, repeated phrasing, paragraph similarity, complexity shifts, register changes, and section-level style variation.",
+        "Odd word choices, repeated phrasing, paragraph similarity, and places where the writing style changes noticeably.",
       findings: textualFindings
     }),
     buildSection({
       id: "comparative",
-      label: "Authenticated Writing Comparison",
+      label: "Known writing comparison",
       description:
-        "Comparison between the submitted text and a known writing sample from the same candidate.",
+        "How this submission compares with a known piece of writing from the same candidate.",
       available: report.comparativeProfile.available,
       unavailableJudgement: "Not run",
       unavailableSummary: "No authenticated writing sample was supplied.",
@@ -63,9 +63,9 @@ export function buildAlgorithmicSections(report: LaisrReport): AlgorithmicSectio
     }),
     {
       id: "ai_prose",
-      label: "AI Prose Opinion",
+      label: "AI text opinion",
       description:
-        "Optional text-only AI opinion. This sends only the visible submitted writing, not metadata, XML, deterministic findings, or comparison metrics.",
+        "Optional text-only opinion. This sends the visible writing only, not the hidden file history or other LAISR findings.",
       available: true,
       judgement: "Not run",
       tone: "not_run",

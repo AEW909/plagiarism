@@ -3,63 +3,63 @@ import type { EvidenceCheck, Finding, LaisrReport } from "./types";
 const CHECK_DEFINITIONS = [
   {
     id: "package",
-    label: "Package envelope",
+    label: "File save pattern",
     category: "Package Forensics",
     clearDetail:
-      "Checked ZIP package member timestamps for unusually compressed rewrite patterns across core document parts."
+      "Checked whether the internal Word file parts were all rewritten at almost the same time, which can happen after export, conversion, or late-stage repackaging."
   },
   {
     id: "metadata",
-    label: "Document metadata",
+    label: "Author and edit details",
     category: "Document Metadata",
     clearDetail:
       "Checked creator, last editor, created/modified dates, revision count, editing time, page count, word count, and application metadata."
   },
   {
     id: "xml",
-    label: "Word XML forensics",
+    label: "Hidden Word history",
     category: "XML Forensics",
     clearDetail:
-      "Checked edit-session marker density, paragraph-level marker distribution, pasted-session clues, hidden or white text, browser-origin font markers, tracked-formatting signals, and font diversity."
+      "Checked hidden Word editing traces, paragraph-level paste clues, hidden or white text, browser-origin formatting, tracked-change residue, and unusual font changes."
   },
   {
     id: "textual",
-    label: "Textual anomalies",
+    label: "Unusual wording",
     category: "Textual Anomalies",
     clearDetail:
-      "Checked suspicious substitutions, structural grammar artefacts, merged compound words, and copy/paste artefacts."
+      "Checked suspicious word substitutions, grammar artefacts, merged words, and copy/paste artefacts visible in the text."
   },
   {
     id: "stylometric",
-    label: "Stylometric indicators",
+    label: "Repetition and structure",
     category: "Stylometric Indicators",
     clearDetail:
       "Checked transition phrase density, repeated opener patterns, paragraph similarity, and repeated/circular phrasing signals."
   },
   {
     id: "linguistic",
-    label: "Linguistic consistency",
+    label: "Writing consistency",
     category: "Linguistic Consistency",
     clearDetail:
-      "Checked segment-level complexity, readability shifts, formal register spikes, and consistency against the document's own baseline."
+      "Checked whether sections of the essay become unusually simple, complex, formal, or passive compared with the rest of the same document."
   },
   {
     id: "relationships",
-    label: "Relationships and embedded objects",
+    label: "Links and embedded items",
     category: "Relationships and Embedded Objects",
     clearDetail:
-      "Checked relationship files, external targets, hyperlinks, embedded packages/objects, media references, and custom XML relationships."
+      "Checked links, embedded files or objects, images, custom template data, and other package references that may explain how the document was assembled."
   },
   {
     id: "comparative",
-    label: "Authenticated writing comparison",
+    label: "Known writing comparison",
     category: "Authenticated Writing Comparison",
     clearDetail:
       "No authenticated writing sample was supplied, so LAISR could not compare this submission with known writing by the same candidate."
   },
   {
     id: "ai",
-    label: "Text-only AI prose review",
+    label: "AI text opinion",
     category: "Text-only AI Prose Opinion",
     clearDetail:
       "Checked whether the optional text-only AI review completed a prose-level source-use, plagiarism, paraphrasing, authorship, and AI-writing opinion before the later evidence-synthesis and judgement stages."
